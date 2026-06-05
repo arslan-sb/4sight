@@ -1,0 +1,19 @@
+# LLM tooling and agent bindings (never tracked)
+.claude/
+CLAUDE.md
+AGENTS.md
+.superpowers/
+
+# LLM-generated specs and docs (kept local, not tracked)
+docs/superpowers/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Chroma and local data
+.chroma/
+*.sqlite3
