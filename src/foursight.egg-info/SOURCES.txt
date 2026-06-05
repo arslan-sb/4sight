@@ -1,0 +1,8 @@
+pyproject.toml
+src/foursight/__init__.py
+src/foursight.egg-info/PKG-INFO
+src/foursight.egg-info/SOURCES.txt
+src/foursight.egg-info/dependency_links.txt
+src/foursight.egg-info/requires.txt
+src/foursight.egg-info/top_level.txt
+tests/test_smoke.py
