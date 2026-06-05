@@ -1,0 +1,36 @@
+from __future__ import annotations
+from .models import Node, NodeKind, EdgeType, DataBinding, Sensitivity
+from .graph_store import GraphStore
+from .propagation import Engine
+from .reports import generate_report
+
+
+def _task(s, nid, title):
+    s.add_node(Node(id=nid, kind=NodeKind.TASK, title=title))
+
+
+def _leaf(s, nid, title, sens=Sensitivity.INTERNAL):
+    s.add_node(Node(id=nid, kind=NodeKind.LEAF, title=title,
+                    data_binding=DataBinding(adapter_id=nid, sensitivity=sens), raw={}))
+
+
+def build_seed(llm=None, vector=None):
+    from .llm import FakeLLM
+    from .vector_store import FakeVector
+    s = GraphStore()
+    for nid, title in [("root", "Q3 Launch Readiness"), ("customer_portal", "Customer Portal"),
+                       ("payments", "Payments Platform"), ("platform_team", "Platform Team"),
+                       ("payments_team", "Payments Team"), ("personnel_budget", "Personnel Budget")]:
+        _task(s, nid, title)
+    _leaf(s, "alice_owner", "Alice (payroll ownership)")
+    _leaf(s, "skills_matrix", "Skills Matrix")
+    _leaf(s, "comp_pool", "Eng compensation pool", Sensitivity.CONFIDENTIAL)
+    for a, b in [("root", "customer_portal"), ("root", "payments"), ("root", "personnel_budget"),
+                 ("customer_portal", "platform_team"), ("payments", "platform_team"),
+                 ("payments", "payments_team"), ("platform_team", "alice_owner"),
+                 ("platform_team", "skills_matrix"), ("personnel_budget", "comp_pool")]:
+        s.add_edge(a, b, EdgeType.DECOMPOSITION)
+    s.add_edge("alice_owner", "payments_team", EdgeType.DEPENDENCY)   # cross-branch sideways
+    eng = Engine(s, llm or FakeLLM(), vector or FakeVector(), generate_report)
+    eng.run_full()
+    return s, eng, {}
