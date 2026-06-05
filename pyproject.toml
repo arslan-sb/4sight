@@ -13,3 +13,6 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+foursight = ["fixtures/mock_company/topology.json", "fixtures/mock_company/policies/*.md"]

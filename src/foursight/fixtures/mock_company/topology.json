@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {"id": "root", "kind": "task", "title": "Q3 Launch Readiness"},
+    {"id": "engineering", "kind": "task", "title": "Engineering Dept"},
+    {"id": "customer_portal", "kind": "task", "title": "Customer Portal"},
+    {"id": "payments", "kind": "task", "title": "Payments Platform"},
+    {"id": "personnel_budget", "kind": "task", "title": "Personnel Budget"},
+    {"id": "platform_team", "kind": "task", "title": "Platform Team"},
+    {"id": "payments_team", "kind": "task", "title": "Payments Team"},
+    {"id": "alice_owner", "kind": "leaf", "title": "Alice (payroll ownership)", "sensitivity": "internal"},
+    {"id": "skills_matrix", "kind": "leaf", "title": "Skills Matrix", "sensitivity": "internal"},
+    {"id": "comp_pool", "kind": "leaf", "title": "Eng compensation pool", "sensitivity": "confidential"},
+    {"id": "contractor_costs", "kind": "leaf", "title": "Contractor costs", "sensitivity": "internal"},
+    {"id": "travel_budget", "kind": "leaf", "title": "Travel budget", "sensitivity": "internal"}
+  ],
+  "edges": [
+    {"src": "root", "dst": "engineering", "type": "decomposition"},
+    {"src": "root", "dst": "personnel_budget", "type": "decomposition"},
+    {"src": "engineering", "dst": "customer_portal", "type": "decomposition"},
+    {"src": "engineering", "dst": "payments", "type": "decomposition"},
+    {"src": "customer_portal", "dst": "platform_team", "type": "decomposition"},
+    {"src": "payments", "dst": "platform_team", "type": "decomposition"},
+    {"src": "payments", "dst": "payments_team", "type": "decomposition"},
+    {"src": "platform_team", "dst": "alice_owner", "type": "decomposition"},
+    {"src": "platform_team", "dst": "skills_matrix", "type": "decomposition"},
+    {"src": "personnel_budget", "dst": "comp_pool", "type": "decomposition"},
+    {"src": "personnel_budget", "dst": "contractor_costs", "type": "decomposition"},
+    {"src": "personnel_budget", "dst": "travel_budget", "type": "decomposition"},
+    {"src": "alice_owner", "dst": "payments_team", "type": "dependency"}
+  ]
+}
