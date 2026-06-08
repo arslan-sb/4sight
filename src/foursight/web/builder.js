@@ -303,17 +303,11 @@ function depsOf(nid){
 }
 
 function render(){
-  // Active layer: only currentRoot + its decomposition children
+  // Active layer: ONLY currentRoot + its direct decomposition children
   var activeIds={};
   if(currentRoot){
     activeIds[currentRoot]=true;
     childrenOf(currentRoot).forEach(function(c){activeIds[c]=true;});
-    // Also: dependency edges that originate from active nodes (show the target too)
-    var extra={};
-    Object.keys(activeIds).forEach(function(nid){
-      depsOf(nid).forEach(function(d){extra[d]=true;});
-    });
-    Object.keys(extra).forEach(function(d){activeIds[d]=true;});
   }
 
   // Build SVG
