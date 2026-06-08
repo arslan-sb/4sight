@@ -16,4 +16,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-foursight = ["fixtures/mock_company/topology.json", "fixtures/mock_company/policies/*.md"]
+foursight = ["fixtures/mock_company/topology.json", "fixtures/mock_company/policies/*.md", "fixtures/supply_chain/topology.json", "fixtures/supply_chain/policies/*.md"]

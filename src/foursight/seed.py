@@ -52,3 +52,21 @@ def load_company(path=None, llm=None, vector=None):
     eng = Engine(s, llm or FakeLLM(), vector, generate_report)
     eng.run_full()
     return s, eng, {}
+
+
+def load_supply_chain(path=None, llm=None, vector=None):
+    from .supply_chain_fixture import parse_supply_chain, FIXTURES
+    from .vector_store import FakeVector
+    from .llm import FakeLLM
+    spec = parse_supply_chain(path or FIXTURES)
+    s = GraphStore()
+    for node in spec.nodes:
+        s.add_node(node)
+    for src, dst, etype in spec.edges:
+        s.add_edge(src, dst, etype)
+    vector = vector or FakeVector()
+    for doc_id, text in spec.policy_docs:
+        vector.add(doc_id, text)
+    eng = Engine(s, llm or FakeLLM(), vector, generate_report)
+    eng.run_full()
+    return s, eng, {}
