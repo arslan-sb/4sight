@@ -10,7 +10,7 @@ def test_real_core_leave_demo():
     order = ["low", "medium", "high", "critical"]
     assert order.index(after["severity"]) >= order.index(before["severity"])
     assert after["severity"] in ("high", "critical")
-    assert client.get("/trace/root").json()["origin"]["source"] == "Leave Calendar"
+    assert "Personnel" in client.get("/trace/root").json()["origin"]["source"]
 
 
 def test_real_core_salary_effect_only_for_reviewer():

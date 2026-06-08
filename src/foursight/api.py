@@ -130,15 +130,16 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         effect_score = float(body.get("effect_score", 40))
 
         if kind == "salary":
-            change = ChangeEvent(source=source, record_ref=node_id, before=None,
+            change = ChangeEvent(source="Payroll (redacted)", record_ref="comp_pool", before=None,
                                  after={"effect_score": effect_score, "category": "compensation"},
-                                 at=now, sensitivity=Sensitivity.INTERNAL)
+                                 at=now, sensitivity=Sensitivity.CONFIDENTIAL)
         elif kind == "leave":
-            change = ChangeEvent(source=source, record_ref=node_id, before=None,
+            change = ChangeEvent(source="Personnel Change", record_ref="redacted",
+                                 before=None,
                                  after={"effect_score": effect_score,
                                         "capacity_drop_pct": effect_score,
                                         "single_owner": True, "data_age_h": 2},
-                                 at=now, sensitivity=Sensitivity.INTERNAL)
+                                 at=now, sensitivity=Sensitivity.CONFIDENTIAL)
         else:
             change = ChangeEvent(source=source, record_ref=node_id, before=None,
                                  after={"effect_score": effect_score}, at=now,

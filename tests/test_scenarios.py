@@ -14,7 +14,7 @@ def test_leave_act_raises_root_and_traces():
     after = c.get("/report/root", params={"role": "reviewer"}).json()
     order = ["low", "medium", "high", "critical"]
     assert order.index(after["severity"]) > order.index(before["severity"])
-    assert c.get("/trace/root").json()["origin"]["source"] == "Leave Calendar"
+    assert "Personnel" in c.get("/trace/root").json()["origin"]["source"]
 
 
 def test_salary_act_effect_visible_source_hidden():
