@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>4sight</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; background:#0f1115; color:#e6e6e6; }
+    button { margin-right: 8px; padding: 8px 12px; cursor: pointer; }
+    .crumb { opacity: 0.6; font-size: 13px; margin: 14px 0; }
+    .card { border: 1px solid #2a2e36; border-radius: 12px; padding: 18px; }
+    .sev { font-weight: 700; }
+    .driver { border: 1px solid #2a2e36; border-radius: 8px; padding: 8px 10px; margin: 6px 0; cursor: pointer; }
+    .driver:hover { background: #1a1d24; }
+    select { background:#1a1d24; color:#e6e6e6; }
+  </style>
+</head>
+<body>
+  <h1>4sight</h1>
+  <div>
+    <button onclick="simulate('leave')">Simulate: key owner leave</button>
+    <button onclick="simulate('salary')">Simulate: salary hike (redacted)</button>
+    View as:
+    <select id="role" onchange="reload()">
+      <option value="reviewer">reviewer</option>
+      <option value="privileged">privileged</option>
+    </select>
+  </div>
+  <div class="crumb" id="crumb"></div>
+  <div class="card" id="report"></div>
+  <script src="/static/app.js"></script>
+  <script>boot();</script>
+</body>
+</html>
