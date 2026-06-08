@@ -42,6 +42,49 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         f = WEB / "graph.html"
         return f.read_text() if f.exists() else "<h1>graph not built yet</h1>"
 
+    @app.get("/raw", response_class=HTMLResponse)
+    def raw_graph():
+        f = WEB / "raw.html"
+        return f.read_text() if f.exists() else "<h1>raw graph not built yet</h1>"
+
+    @app.get("/graph-raw")
+    def graph_raw(role: str = "reviewer"):
+        viewer = Viewer(id="anon", role=Role(role))
+        nodes = []
+        for nid in store.all_ids():
+            node = store.get_node(nid)
+            entry = {
+                "id": nid,
+                "title": node.title,
+                "kind": node.kind.value,
+                "severity": None,
+            }
+            if node.current:
+                entry["severity"] = node.current.llm_verdict.severity.value
+            nodes.append(entry)
+        edges = []
+        for nid in store.all_ids():
+            node = store.get_node(nid)
+            for cid in store.children(nid):
+                child = store.get_node(cid)
+                edges.append({
+                    "src": nid,
+                    "dst": cid,
+                    "src_title": node.title,
+                    "dst_title": child.title,
+                    "type": "decomposition",
+                })
+            for did in store.dependencies(nid):
+                dep = store.get_node(did) if did in store.nodes else None
+                edges.append({
+                    "src": did,
+                    "dst": nid,
+                    "src_title": dep.title if dep else did,
+                    "dst_title": node.title,
+                    "type": "dependency",
+                })
+        return {"nodes": nodes, "edges": edges}
+
     @app.get("/graph-data")
     def graph_data(role: str = "reviewer"):
         viewer = Viewer(id="anon", role=Role(role))

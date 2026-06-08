@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>4sight -- Raw Graph</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 40px auto; background:#0f1115; color:#e6e6e6; }
+    .nav { display:flex; gap:8px; margin-bottom:16px; }
+    .nav a { color:#6b8cff; text-decoration:none; font-size:14px; }
+    .nav a:hover { text-decoration:underline; }
+    select { background:#1a1d24; color:#e6e6e6; border:1px solid #2a2e36; border-radius:6px; padding:6px 10px; }
+    button { padding:6px 12px; cursor:pointer; background:#1a1d24; color:#e6e6e6; border:1px solid #2a2e36; border-radius:6px; margin-right:4px; }
+    button:hover { background:#2a2e36; }
+    h2 { margin-top:24px; }
+    .nodes-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; margin:12px 0; }
+    .n-card { border:1px solid #2a2e36; border-radius:8px; padding:10px 14px; display:flex; align-items:center; gap:10px; }
+    .n-card .title { font-size:13px; flex:1; }
+    .n-card .kind { font-size:9px; opacity:0.4; text-transform:uppercase; }
+    .sev-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .sev-dot-critical { background:#ff6b6b; box-shadow:0 0 8px #ff6b6b; }
+    .sev-dot-high { background:#ffb347; box-shadow:0 0 6px #ffb347; }
+    .sev-dot-medium { background:#ffd700; }
+    .sev-dot-low { background:#4caf50; }
+    .sev-dot-none { background:#3a3e46; }
+    .edges-list { margin:12px 0; }
+    .edge-row { display:flex; align-items:center; gap:8px; padding:6px 10px; margin:3px 0; border-radius:6px; font-size:13px; }
+    .edge-decomp { border-left:3px solid #3a5a3a; }
+    .edge-dep { border-left:3px solid #3a3a6b; }
+    .edge-src, .edge-dst { font-weight:600; }
+    .edge-type { font-size:10px; opacity:0.5; margin:0 4px; text-transform:uppercase; }
+    .edge-arrow { opacity:0.3; }
+    .sev { font-weight:700; padding:2px 8px; border-radius:4px; font-size:11px; margin-left:auto; }
+    .sev-critical { background:#4a1018; color:#ff6b6b; }
+    .sev-high { background:#3d2e0a; color:#ffb347; }
+    .sev-medium { background:#2d2a0a; color:#ffd700; }
+    .sev-low { background:#0a2d0a; color:#4caf50; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/">Report Viewer</a>
+    <span style="opacity:0.3">|</span>
+    <a href="/graph">DAG Explorer</a>
+    <span style="opacity:0.3">|</span>
+    <a href="/raw">Raw Graph</a>
+  </div>
+  <h1>Raw Graph</h1>
+  <div>
+    View as:
+    <select id="role" onchange="refresh()">
+      <option value="reviewer">reviewer</option>
+      <option value="privileged">privileged</option>
+    </select>
+    <button onclick="refresh()">Refresh</button>
+  </div>
+  <h2>Nodes</h2>
+  <div class="nodes-grid" id="nodes"></div>
+  <h2>Edges</h2>
+  <div class="edges-list" id="edges"></div>
+  <script src="/static/raw.js"></script>
+  <script>refresh();</script>
+</body>
+</html>
