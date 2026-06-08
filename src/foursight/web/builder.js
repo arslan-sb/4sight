@@ -31,23 +31,87 @@ function init(){
 
 function resizeSVG(){
   var rect=svgEl.parentElement.getBoundingClientRect();
-  viewW=Math.max(rect.width, 400); viewH=Math.max(rect.height, 300);
-  fitAllNodes();
+  viewW=Math.max(rect.width, 600); viewH=Math.max(rect.height, 400);
+  updateViewBox();
 }
 
-function fitAllNodes(){
-  var minX=0, minY=0, maxX=viewW, maxY=viewH;
-  var hasNodes=false;
-  Object.keys(nodePositions).forEach(function(nid){
-    var p=nodePositions[nid];
-    if(!hasNodes){minX=p.x;minY=p.y;maxX=p.x+NODE_W;maxY=p.y+NODE_H;hasNodes=true;}
-    else{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+NODE_W);maxY=Math.max(maxY,p.y+NODE_H);}
+function layoutGraph(){
+  // Compute decomposition layers (topological sort by decomposition edges)
+  var decompLayers={};
+  var allNids=Object.keys(graph.nodes);
+  if(allNids.length===0) return;
+
+  // Find roots: nodes with no decomposition parent
+  allNids.forEach(function(nid){
+    var hasParent=false;
+    (graph.edges||[]).forEach(function(e){
+      if(e.dst===nid&&e.type==="decomposition") hasParent=true;
+    });
+    if(!hasParent) decompLayers[nid]=0;
   });
-  if(hasNodes){
-    minX-=60; minY-=60; maxX+=60; maxY+=60;
-    viewX=minX; viewY=minY;
-    viewW=Math.max(maxX-minX, 400); viewH=Math.max(maxY-minY, 300);
+  // If no roots found, pick first node as root
+  if(Object.keys(decompLayers).length===0){
+    decompLayers[allNids[0]]=0;
   }
+
+  // BFS: assign layers = max(parent layer) + 1
+  var changed=true;
+  while(changed){
+    changed=false;
+    allNids.forEach(function(nid){
+      if(decompLayers[nid]!==undefined) return;
+      var maxParent=-1;
+      var allAssigned=true;
+      (graph.edges||[]).forEach(function(e){
+        if(e.dst===nid&&e.type==="decomposition"){
+          if(decompLayers[e.src]===undefined) allAssigned=false;
+          else maxParent=Math.max(maxParent, decompLayers[e.src]);
+        }
+      });
+      if(allAssigned&&maxParent>=0){
+        decompLayers[nid]=maxParent+1;
+        changed=true;
+      }
+    });
+  }
+  // Assign layer 0 to any remaining unassigned
+  allNids.forEach(function(nid){
+    if(decompLayers[nid]===undefined) decompLayers[nid]=0;
+  });
+
+  // Group by layer
+  var layerGroups={};
+  allNids.forEach(function(nid){
+    var l=decompLayers[nid];
+    if(!layerGroups[l]) layerGroups[l]=[];
+    layerGroups[l].push(nid);
+  });
+
+  // Position nodes: each layer is a row, nodes spread horizontally
+  var layerKeys=Object.keys(layerGroups).map(Number).sort(function(a,b){return a-b;});
+  var layerSpacing=120;
+  var nodeSpacing=200;
+  var startY=80;
+  layerKeys.forEach(function(l){
+    var nodes=layerGroups[l];
+    var totalWidth=Math.max(nodes.length*nodeSpacing, 200);
+    var startX=Math.max(60, (viewW-totalWidth)/2);
+    nodes.forEach(function(nid,i){
+      nodePositions[nid]={x:startX+i*nodeSpacing, y:startY+l*layerSpacing};
+    });
+  });
+
+  // Fit view to contain all positioned nodes
+  var maxX=0, maxY=0;
+  allNids.forEach(function(nid){
+    var p=nodePositions[nid];
+    if(!p) return;
+    maxX=Math.max(maxX, p.x+NODE_W);
+    maxY=Math.max(maxY, p.y+NODE_H);
+  });
+  viewW=Math.max(maxX+120, 600);
+  viewH=Math.max(maxY+120, 400);
+  viewX=-60; viewY=-20;
   updateViewBox();
 }
 
@@ -91,7 +155,7 @@ async function loadGraph(){
     var rr=await fetch("/root"); currentRoot=(await rr.json()).node_id;
     layerStack=[currentRoot];
   }
-  fitAllNodes();
+  layoutGraph();
   render();
 }
 
@@ -226,7 +290,7 @@ function render(){
   // Build SVG
   var html='';
 
-  // Edges -- show all, dim ones not in active layer
+  // Edges -- show all, dim inactive, terminate at node boundaries
   var drawnEdges={};
   (graph.edges||[]).forEach(function(e){
     var key=e.src+"-"+e.dst+"-"+e.type;
@@ -237,10 +301,12 @@ function render(){
     var inLayer=activeIds[e.src]||activeIds[e.dst];
     var strokeCol=inLayer?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):"#d1d5db";
     var edgeOpacity=inLayer?1:0.3;
-    var x1=from.x+NODE_W/2, y1=from.y+NODE_H;
-    var x2=to.x+NODE_W/2, y2=to.y;
+    // Anchor at node boundaries
+    var fromCX=from.x+NODE_W/2, fromCY=from.y+NODE_H; // bottom-center of source
+    var toCX=to.x+NODE_W/2, toCY=to.y;                 // top-center of target
+    var x1=fromCX, y1=fromCY, x2=toCX, y2=toCY;
     var mx=(x1+x2)/2, my=(y1+y2)/2;
-    var d="M"+x1+" "+y1+" Q"+x1+" "+my+","+mx+" "+my+" Q"+x2+" "+my+","+x2+" "+y2;
+    var d="M"+x1+" "+y1+" Q"+mx+" "+y1+","+mx+" "+y2+","+x2+" "+y2;
     html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+(isDep?1.5:2)+'" stroke-dasharray="'+(isDep?"6 3":"none")+'" opacity="'+edgeOpacity+'"/>';
     if(inLayer){
       var ang=Math.atan2(y2-y1,x2-x1);
@@ -336,12 +402,8 @@ async function saveNodePanel(){
   }
 
   if(creatingKind){
-    // Place near current root
-    var cx=currentRoot&&nodePositions[currentRoot]?nodePositions[currentRoot].x+300:200;
-    var cy=currentRoot&&nodePositions[currentRoot]?nodePositions[currentRoot].y+80*(Object.keys(graph.nodes).length%5):200;
-    nodePositions[nid]={x:cx,y:cy};
     // Auto-wire: link to current root as decomposition
-    if(currentRoot&&kind!=="leaf"){
+    if(currentRoot){
       graph.edges.push({src:currentRoot,dst:nid,type:"decomposition"});
       fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:currentRoot,dst:nid,type:"decomposition"})});
     }
@@ -357,6 +419,7 @@ async function saveNodePanel(){
       document.getElementById("panel-relations").style.display="block";
       creatingKind=null;
     }
+    layoutGraph();
     render();
   });
 }
@@ -435,4 +498,4 @@ async function runBatchAssess(){
   render();
 }
 
-function resetView(){ viewX=0;viewY=0;viewScale=1; currentRoot=null; layerStack=[]; selectedNode=null; loadGraph().then(function(){fitAllNodes();}); }
+function resetView(){ viewX=0;viewY=0;viewScale=1; currentRoot=null; layerStack=[]; selectedNode=null; loadGraph(); }
