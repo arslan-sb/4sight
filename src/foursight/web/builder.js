@@ -306,17 +306,15 @@ function render(){
     var sw=isDep?1.5:2;
     var dash=isDep?"6 3":"none";
 
-    // All outgoing edges start from BOTTOM of the source node
-    // All incoming edges plug into the TOP of the target node
-    // Decomposition: child influences parent (child bottom → parent top)
-    // Dependency: src influences dst (src bottom → dst top)
+    // Outgoing edges start from TOP of source, incoming plug into BOTTOM of target
+    // Nodes lower in layout are dependencies; their edges flow upward
     var x1, y1, x2, y2;
     if(!isDep){
-      x1=to.x+NODE_W/2; y1=to.y+NODE_H;  // child bottom-center
-      x2=from.x+NODE_W/2; y2=from.y;      // parent top-center
+      x1=to.x+NODE_W/2; y1=to.y;           // child top-center (outgoing upward)
+      x2=from.x+NODE_W/2; y2=from.y+NODE_H; // parent bottom-center (incoming)
     }else{
-      x1=from.x+NODE_W/2; y1=from.y+NODE_H; // src bottom-center
-      x2=to.x+NODE_W/2; y2=to.y;            // dst top-center
+      x1=from.x+NODE_W/2; y1=from.y;        // src top-center (outgoing)
+      x2=to.x+NODE_W/2; y2=to.y+NODE_H;     // dst bottom-center (incoming)
     }
 
     // Cubic bezier with control points offset vertically
