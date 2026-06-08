@@ -482,12 +482,21 @@ function selectNode(nid){
 
     var labelFor=function(r){return r.type==="dep"?"[dep] ":"";};
     document.getElementById("panel-dependencies").innerHTML=iDepend.map(function(r){
-      return "<div class='rel-item' style='cursor:pointer;' onclick='selectNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
     document.getElementById("panel-dependents").innerHTML=depOnMe.map(function(r){
-      return "<div class='rel-item' style='cursor:pointer;' onclick='selectNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
   }).catch(function(){});
+}
+
+function drillToNode(nid){
+  layerStack.push(nid);
+  currentRoot=nid;
+  selectNode(nid);
+  layoutGraph();
+  render();
+  updateLayerLabel();
 }
 
 function closePanel(){ creatingKind=null; selectedNode=null; document.getElementById("panel-title").textContent="New Node"; document.getElementById("panel-relations").style.display="none"; document.getElementById("btn-delete").style.display="none"; render(); }
