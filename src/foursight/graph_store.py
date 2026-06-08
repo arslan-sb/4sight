@@ -1,7 +1,13 @@
 from __future__ import annotations
+import hashlib
 import json
 import networkx as nx
 from .models import Node, Edge, EdgeType
+
+
+def content_hash(binding) -> str:
+    raw = f"{binding.adapter_id}:{binding.query.strip().lower()}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 class GraphStore:
@@ -63,6 +69,13 @@ class GraphStore:
 
     def all_ids(self) -> list[str]:
         return list(self.nodes.keys())
+
+    def find_duplicate_source(self, binding) -> str | None:
+        h = content_hash(binding)
+        for nid, node in self.nodes.items():
+            if node.data_binding and content_hash(node.data_binding) == h:
+                return nid
+        return None
 
     def snapshot(self, path: str) -> None:
         data = {"nodes": [n.model_dump(mode="json") for n in self.nodes.values()],

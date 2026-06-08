@@ -33,6 +33,9 @@ class FakeStore:
     def get_node(self, nid):
         return self.nodes[nid]
 
+    def add_node(self, node):
+        self.nodes[node.id] = node
+
     def children(self, nid):
         return self._children.get(nid, [])
 
@@ -47,6 +50,9 @@ class FakeStore:
 
     def all_ids(self):
         return list(self.nodes.keys())
+
+    def topo_order(self, subset):
+        return sorted(subset)
 
     def report(self, nid):
         return self._reports.get(nid)
