@@ -10,8 +10,8 @@ var creatingKind=null;
 var layerStack=[];
 var NODE_W=180, NODE_H=60, PORT_R=7;
 
-var COLORS={critical:"#ff6b6b",high:"#ffb347",medium:"#ffd700",low:"#4caf50",none:"#4a4e56",
-  edgeDecomp:"#3a5a3a",edgeDep:"#3a3a6b",bg:"#0a0c10",text:"#e6e6e6"};
+var COLORS={critical:"#dc2626",high:"#ea580c",medium:"#ca8a04",low:"#16a34a",none:"#9ca3af",
+  edgeDecomp:"#86a886",edgeDep:"#7b8cc4",bg:"#f8f9fa",text:"#1f2937",textDim:"#6b7280",cardBg:"#ffffff",cardStroke:"#d1d5db"};
 
 function sevColor(s){return COLORS[s]||COLORS.none;}
 
@@ -222,9 +222,9 @@ function render(){
   var parentId=parentOf(currentRoot);
 
   // Build SVG
-  var html='<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3a5a3a"/></marker></defs>';
+  var html='';
 
-  // Edges
+  // Edges with mid-point arrows
   var drawnEdges={};
   (graph.edges||[]).forEach(function(e){
     if(!visibleIds[e.src]&&!visibleIds[e.dst]) return;
@@ -233,14 +233,19 @@ function render(){
     var from=nodePositions[e.src], to=nodePositions[e.dst];
     if(!from||!to) return;
     var isDep=e.type==="dependency";
+    var strokeCol=isDep?COLORS.edgeDep:COLORS.edgeDecomp;
     var cls=isDep?"edge-line edge-dep":"edge-line edge-decomp";
-    // Source: bottom-center of source node
     var x1=from.x+NODE_W/2, y1=from.y+NODE_H;
-    // Target: top-center of target node
     var x2=to.x+NODE_W/2, y2=to.y;
-    var midY=(y1+y2)/2;
-    var d="M"+x1+" "+y1+" C"+x1+" "+midY+","+x2+" "+midY+","+x2+" "+y2;
-    html+='<path d="'+d+'" class="'+cls+'" marker-end="url(#arrowhead)"/>';
+    var mx=(x1+x2)/2, my=(y1+y2)/2;
+    var d="M"+x1+" "+y1+" Q"+x1+" "+my+","+mx+" "+my+" Q"+x2+" "+my+","+x2+" "+y2;
+    html+='<path d="'+d+'" class="'+cls+'" stroke="'+strokeCol+'"/>';
+    // Arrowhead at midpoint
+    var ang=Math.atan2(y2-y1,x2-x1);
+    var s=6;
+    var ax=mx, ay=my;
+    var points=(ax-s*Math.cos(ang-0.6))+","+(ay-s*Math.sin(ang-0.6))+" "+(ax-s*Math.cos(ang+0.6))+","+(ay-s*Math.sin(ang+0.6))+" "+ax+","+ay;
+    html+='<polygon points="'+points+'" fill="'+strokeCol+'"/>';
   });
 
   // Nodes
@@ -251,23 +256,25 @@ function render(){
     var isParent= nid===parentId;
     var cls="node-card"+(isParent?" faint":"");
     html+='<g class="'+cls+'" data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')">';
-    // Card
-    html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="6" fill="#111318" stroke="'+col+'" stroke-width="1.5"/>';
-    // Inner glow
-    html+='<rect x="2" y="2" width="'+(NODE_W-4)+'" height="'+(NODE_H-4)+'" rx="4" fill="none" stroke="'+col+'22" stroke-width="4"/>';
+    // Card shadow
+    html+='<rect x="2" y="3" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="#00000010"/>';
+    // Card body
+    html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="'+COLORS.cardBg+'" stroke="'+(nid===selectedNode?col:COLORS.cardStroke)+'" stroke-width="'+(nid===selectedNode?2:1)+'"/>';
+    // Left accent bar
+    html+='<rect x="0" y="4" width="4" height="'+(NODE_H-8)+'" rx="2" fill="'+col+'"/>';
     // Severity dot
-    if(n.severity) html+='<circle cx="16" cy="16" r="5" fill="'+col+'"/>';
+    if(n.severity) html+='<circle cx="18" cy="18" r="5" fill="'+col+'"/>';
     // Title
     var title=(n.title||nid); if(title.length>20) title=title.slice(0,18)+"..";
-    html+='<text x="'+(n.severity?28:14)+'" y="22" fill="'+COLORS.text+'" font-size="13" font-family="system-ui">'+esc(title)+'</text>';
+    html+='<text x="'+(n.severity?30:16)+'" y="22" fill="'+COLORS.text+'" font-size="13" font-family="system-ui" font-weight="600">'+esc(title)+'</text>';
     // Kind badge
-    html+='<text x="'+(n.severity?28:14)+'" y="40" fill="'+COLORS.none+'" font-size="10" font-family="system-ui">'+(n.kind||"task")+'</text>';
+    html+='<text x="'+(n.severity?30:16)+'" y="40" fill="'+COLORS.textDim+'" font-size="11" font-family="system-ui">'+(n.kind||"task")+'</text>';
     // Severity badge
-    if(n.severity) html+='<text x="'+(NODE_W-10)+'" y="22" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui">'+n.severity.toUpperCase()+'</text>';
+    if(n.severity) html+='<text x="'+(NODE_W-12)+'" y="22" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui">'+n.severity.toUpperCase()+'</text>';
     // Output port (right side, middle)
     html+='<circle class="node-port" data-node="'+nid+'" cx="'+NODE_W+'" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="'+col+'" stroke="'+col+'" stroke-width="1.5"/>';
     // Input port (left side, middle)
-    html+='<circle cx="0" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="none" stroke="#2a2e36" stroke-width="1"/>';
+    html+='<circle cx="0" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="none" stroke="'+COLORS.cardStroke+'" stroke-width="1"/>';
     html+='</g>';
   });
 
