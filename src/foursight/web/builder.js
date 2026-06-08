@@ -321,9 +321,9 @@ function render(){
     var from=nodePositions[e.src], to=nodePositions[e.dst];
     if(!from||!to) return;
     var isDep=e.type==="dependency";
-    var inLayer=activeIds[e.src]||activeIds[e.dst];
-    var strokeCol=inLayer?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):"#d1d5db";
-    var edgeOpacity=inLayer?1:0.25;
+    var bothActive=activeIds[e.src]&&activeIds[e.dst];
+    var strokeCol=bothActive?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):"#d1d5db";
+    var edgeOpacity=bothActive?1:0.12;
     var sw=isDep?1.5:2;
     var dash=isDep?"6 3":"none";
 
@@ -344,7 +344,7 @@ function render(){
     html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+sw+'" stroke-dasharray="'+dash+'" opacity="'+edgeOpacity+'"/>';
 
     // Arrowhead at midpoint (t=0.5 of cubic bezier)
-    if(inLayer){
+    if(bothActive){
       var t=0.5, mt=1-t;
       var mx=mt*mt*mt*x1 + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x2;
       var my=mt*mt*mt*y1 + 3*mt*mt*t*(y1+dy) + 3*mt*t*t*(y2-dy) + t*t*t*y2;
