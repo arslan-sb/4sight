@@ -3,7 +3,7 @@
     {"id": "fab17_output", "kind": "task", "title": "Fab 17 Output"},
     {"id": "eng_ops", "kind": "task", "title": "Engineering Operations"},
     {"id": "lithography", "kind": "task", "title": "Lithography Line"},
-    {"id": "alice_chen", "kind": "leaf", "title": "Alice Chen, Process Lead", "sensitivity": "internal"},
+    {"id": "alice_chen", "kind": "leaf", "title": "Alice Chen, Process Lead", "sensitivity": "confidential"},
     {"id": "packaging", "kind": "task", "title": "Packaging Line"},
     {"id": "supply_chain", "kind": "task", "title": "Supply Chain"},
     {"id": "wafer_suppliers", "kind": "task", "title": "Wafer Suppliers"},
@@ -18,7 +18,7 @@
     {"id": "buffer_warehouse", "kind": "task", "title": "Buffer Warehouse"},
     {"id": "buffer_stock", "kind": "leaf", "title": "Buffer Stock Level", "sensitivity": "confidential"},
     {"id": "workforce", "kind": "task", "title": "Workforce"},
-    {"id": "bob_taylor", "kind": "leaf", "title": "Bob Taylor, Shift Supervisor", "sensitivity": "internal"},
+    {"id": "bob_taylor", "kind": "leaf", "title": "Bob Taylor, Shift Supervisor", "sensitivity": "confidential"},
     {"id": "maint_crew", "kind": "leaf", "title": "Maintenance Crew", "sensitivity": "internal"}
   ],
   "edges": [

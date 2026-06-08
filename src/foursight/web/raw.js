@@ -24,13 +24,30 @@ function renderNodes(nodes) {
   var html = "";
   nodes.forEach(function(n) {
     var dot = sevDot(n.severity);
-    html += "<div class=\"n-card\">" +
+    html += "<div class=\"n-card\" onclick=\"showReport('" + n.id + "')\" style=\"cursor:pointer;\">" +
       "<span class=\"sev-dot " + dot + "\"></span>" +
       "<span class=\"title\">" + n.title + " <span class=\"kind\">" + n.kind + "</span></span>" +
       sevBadge(n.severity) +
       "</div>";
   });
   el.innerHTML = html;
+  document.getElementById("detail").style.display = "none";
+}
+
+async function showReport(nodeId) {
+  var r = await fetch("/report/" + nodeId + "?role=" + role());
+  var rep = await r.json();
+  var det = document.getElementById("detail");
+  if (!rep) { det.style.display = "none"; return; }
+  det.style.display = "block";
+  var sevMap = {critical:"sev-critical", high:"sev-high", medium:"sev-medium", low:"sev-low"};
+  var sc = sevMap[rep.severity] || "";
+  det.innerHTML =
+    "<h3>" + rep.node_id + " <span class=\"sev " + sc + "\">" + rep.severity.toUpperCase() + "</span></h3>" +
+    "<p style=\"line-height:1.5;\">" + rep.overall + "</p>" +
+    (rep.drivers && rep.drivers.length
+      ? "<p style=\"opacity:0.6;\">Drivers: " + rep.drivers.map(function(d) { return d.line; }).join("; ") + "</p>"
+      : "");
 }
 
 function renderEdges(edges) {
