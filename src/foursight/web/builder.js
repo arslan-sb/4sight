@@ -342,6 +342,7 @@ function selectNode(nid){
   document.getElementById("panel-threshold").value=n.trigger_threshold||25;
   document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
   document.getElementById("panel-relations").style.display="block";
+  document.getElementById("btn-delete").style.display="block";
   onKindChange();
   fetch("/builder/nodes/"+nid).then(function(r){return r.json();}).then(function(d){
     document.getElementById("panel-dependents").innerHTML=(d.dependents||[]).map(function(c){return "<div class='rel-item'>"+c+"</div>";}).join("");
@@ -349,7 +350,19 @@ function selectNode(nid){
   }).catch(function(){});
 }
 
-function closePanel(){ creatingKind=null; selectedNode=null; document.getElementById("panel-title").textContent="New Node"; document.getElementById("panel-relations").style.display="none"; render(); }
+function closePanel(){ creatingKind=null; selectedNode=null; document.getElementById("panel-title").textContent="New Node"; document.getElementById("panel-relations").style.display="none"; document.getElementById("btn-delete").style.display="none"; render(); }
+
+function deleteSelectedNode(){
+  var nid=selectedNode;
+  if(!nid) return;
+  if(!confirm("Delete node "+nid+"?")) return;
+  fetch("/builder/nodes/"+nid,{method:"DELETE"}).then(function(){
+    delete graph.nodes[nid]; delete nodePositions[nid];
+    graph.edges=graph.edges.filter(function(e){return e.src!==nid&&e.dst!==nid;});
+    if(currentRoot===nid){ goUpLayer(); }
+    closePanel(); render();
+  });
+}
 
 function addDependencyEdge(fromId,toId){
   var exists=(graph.edges||[]).some(function(e){return e.src===fromId&&e.dst===toId&&e.type==="dependency";});
