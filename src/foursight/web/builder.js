@@ -31,12 +31,30 @@ function init(){
 
 function resizeSVG(){
   var rect=svgEl.parentElement.getBoundingClientRect();
-  viewW=rect.width; viewH=rect.height;
+  viewW=Math.max(rect.width, 400); viewH=Math.max(rect.height, 300);
+  fitAllNodes();
+}
+
+function fitAllNodes(){
+  var minX=0, minY=0, maxX=viewW, maxY=viewH;
+  var hasNodes=false;
+  Object.keys(nodePositions).forEach(function(nid){
+    var p=nodePositions[nid];
+    if(!hasNodes){minX=p.x;minY=p.y;maxX=p.x+NODE_W;maxY=p.y+NODE_H;hasNodes=true;}
+    else{minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x+NODE_W);maxY=Math.max(maxY,p.y+NODE_H);}
+  });
+  if(hasNodes){
+    minX-=60; minY-=60; maxX+=60; maxY+=60;
+    viewX=minX; viewY=minY;
+    viewW=Math.max(maxX-minX, 400); viewH=Math.max(maxY-minY, 300);
+  }
   updateViewBox();
 }
+
 function updateViewBox(){
-  svgEl.setAttribute("viewBox",viewX+" "+viewY+" "+(viewW/viewScale)+" "+(viewH/viewScale));
-  svgEl.setAttribute("width",viewW); svgEl.setAttribute("height",viewH);
+  svgEl.setAttribute("viewBox",viewX+" "+viewY+" "+viewW+" "+viewH);
+  svgEl.setAttribute("width","100%"); svgEl.setAttribute("height","100%");
+  svgEl.style.width="100%"; svgEl.style.height="100%"; svgEl.style.display="block";
 }
 
 function toSVG(mx,my){
@@ -51,17 +69,16 @@ function toSVG(mx,my){
 
 function onWheel(e){
   e.preventDefault();
-  var p=toSVG(e.clientX,e.clientY);
   if(e.ctrlKey||e.metaKey){
+    var p=toSVG(e.clientX,e.clientY);
     var ds=e.deltaY>0?0.9:1.1;
-    viewScale=Math.max(0.2,Math.min(3,viewScale*ds));
-    viewX=p.x-(p.x-viewX)*ds;
-    viewY=p.y-(p.y-viewY)*ds;
-  }else{
-    viewX+=e.deltaX/viewScale;
-    viewY+=e.deltaY/viewScale;
+    var newScale=Math.max(0.3,Math.min(3,viewScale*ds));
+    var cx=viewX+viewW/2, cy=viewY+viewH/2;
+    viewW=viewW*viewScale/newScale; viewH=viewH*viewScale/newScale;
+    viewScale=newScale;
+    viewX=cx-viewW/2; viewY=cy-viewH/2;
+    updateViewBox();
   }
-  updateViewBox();
 }
 
 async function loadGraph(){
@@ -75,6 +92,7 @@ async function loadGraph(){
     var rr=await fetch("/root"); currentRoot=(await rr.json()).node_id;
     layerStack=[currentRoot];
   }
+  fitAllNodes();
   render();
 }
 
@@ -109,8 +127,8 @@ function onMouseDown(e){
     }
   }
 
-  // Pan
-  panning=true; panStart={x:e.clientX,y:e.clientY}; panView={x:viewX,y:viewY};
+  // Click on empty space - deselect
+  selectNode(null);
 }
 
 function onMouseMove(e){
@@ -120,16 +138,11 @@ function onMouseMove(e){
     render();
   }else if(portDrag){
     portLine.setAttribute("x2",p.x); portLine.setAttribute("y2",p.y);
-    // Snap to nearest port
     var snap=findSnapNode(e.clientX,e.clientY);
     if(snap&&snap!==portDrag.from){
       var np=nodePositions[snap]; if(!np) return;
-      portLine.setAttribute("x2",np.x+NODE_W/2); portLine.setAttribute("y2",np.y);
+      portLine.setAttribute("x2",np.x+NODE_W/2); portLine.setAttribute("y2",np.y+NODE_H/2);
     }
-  }else if(panning){
-    var dx=e.clientX-panStart.x, dy=e.clientY-panStart.y;
-    viewX=panView.x-dx/viewScale; viewY=panView.y-dy/viewScale;
-    updateViewBox();
   }
 }
 
@@ -143,7 +156,6 @@ function onMouseUp(e){
     if(portLine){ portLine.remove(); portLine=null; }
     portDrag=null; svgEl.classList.remove("dragging");
   }
-  panning=false;
 }
 
 function onDblClick(e){
@@ -251,7 +263,7 @@ function render(){
     // Kind badge
     html+='<text x="'+(n.severity?28:14)+'" y="40" fill="'+COLORS.none+'" font-size="10" font-family="system-ui">'+(n.kind||"task")+'</text>';
     // Severity badge
-    if(n.severity) html+='<text x="'+NODE_W+'-10'" y="22" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui">'+n.severity.toUpperCase()+'</text>';
+    if(n.severity) html+='<text x="'+(NODE_W-10)+'" y="22" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui">'+n.severity.toUpperCase()+'</text>';
     // Output port (right side, middle)
     html+='<circle class="node-port" data-node="'+nid+'" cx="'+NODE_W+'" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="'+col+'" stroke="'+col+'" stroke-width="1.5"/>';
     // Input port (left side, middle)
@@ -332,9 +344,10 @@ async function saveNodePanel(){
 }
 
 function selectNode(nid){
+  if(!nid){ closePanel(); return; }
   selectedNode=nid; creatingKind=null;
   var n=graph.nodes[nid];
-  if(!n) return;
+  if(!n){ closePanel(); return; }
   document.getElementById("panel-title").textContent=n.title+" ("+n.kind+")";
   document.getElementById("panel-name").value=n.title||"";
   document.getElementById("panel-desc").value=n.description||"";
@@ -404,4 +417,4 @@ async function runBatchAssess(){
   render();
 }
 
-function resetView(){ viewX=0;viewY=0;viewScale=1;updateViewBox(); currentRoot=null; layerStack=[]; loadGraph(); }
+function resetView(){ viewX=0;viewY=0;viewScale=1; currentRoot=null; layerStack=[]; selectedNode=null; loadGraph().then(function(){fitAllNodes();}); }
