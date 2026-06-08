@@ -32,12 +32,19 @@ class FakeLLM:
 
 
 class DeepSeekLLM:
-    model = "deepseek-chat"
+    model = "deepseek-v4-flash"
 
     def __init__(self) -> None:
-        from openai import OpenAI
-        self._client = OpenAI(api_key=os.environ["DEEPSEEK_API_KEY"],
-                              base_url="https://api.deepseek.com")
+        from anthropic import Anthropic
+        self._client = Anthropic(api_key=os.environ["DEEPSEEK_API_KEY"],
+                                 base_url="https://api.deepseek.com/anthropic")
+
+    def _extract_text(self, response) -> str:
+        text = ""
+        for block in response.content:
+            if block.type == "text":
+                text += block.text
+        return text
 
     def verify_score(self, node, rule_score, rule_inputs, grounding) -> LLMVerdict:
         import json
@@ -45,20 +52,27 @@ class DeepSeekLLM:
         prompt = (f"Verify an operational-risk score (0-100) for task '{node.title}'.\n"
                   f"Rule score: {rule_score}. Inputs: {json.dumps(rule_inputs)}.\nGrounding:\n{ctx}\n"
                   'Reply JSON: {"final_score": number, "rationale": string, "adjusted": bool}.')
-        resp = self._client.chat.completions.create(
-            model=self.model, messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}, temperature=0)
-        data = json.loads(resp.choices[0].message.content)
+        resp = self._client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            thinking={"type": "enabled", "budget_tokens": 16000},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        data = json.loads(self._extract_text(resp))
         score = float(data["final_score"])
         return LLMVerdict(final_score=score, severity=severity_from_score(score),
-                          rationale=data.get("rationale", ""), adjusted=bool(data.get("adjusted", False)),
+                          rationale=data.get("rationale", ""),
+                          adjusted=bool(data.get("adjusted", False)),
                           model=self.model)
 
     def generate_overall(self, node, drivers) -> str:
         lines = "\n".join(f"- {d.line}" for d in drivers) or "none"
-        resp = self._client.chat.completions.create(
-            model=self.model, temperature=0,
+        resp = self._client.messages.create(
+            model=self.model,
+            max_tokens=256,
+            thinking={"type": "enabled", "budget_tokens": 4000},
             messages=[{"role": "user", "content":
                        f"Write a 2-sentence risk summary for '{node.title}'. Drivers:\n{lines}\n"
-                       "Do not invent specifics beyond the drivers."}])
-        return resp.choices[0].message.content.strip()
+                       "Do not invent specifics beyond the drivers."}],
+        )
+        return self._extract_text(resp).strip()
