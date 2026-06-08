@@ -232,9 +232,11 @@ function onDblClick(e){
   var nid=getNodeFromEvent(e);
   if(!nid||!graph.nodes[nid]) return;
   var n=graph.nodes[nid];
-  if(n.kind==="task"||childrenOf(nid).length>0){
+  // Only leaf nodes can be drilled into for their sub-layer
+  if(n.kind==="leaf"){
     layerStack.push(nid);
     currentRoot=nid;
+    layoutGraph();
     render();
     updateLayerLabel();
   }
