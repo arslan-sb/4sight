@@ -276,17 +276,17 @@ function depsOf(nid){
 }
 
 function render(){
-  // Compute which nodes are in the "active" layer (full opacity)
+  // Active layer: only currentRoot + its decomposition children
   var activeIds={};
   if(currentRoot){
     activeIds[currentRoot]=true;
     childrenOf(currentRoot).forEach(function(c){activeIds[c]=true;});
-    // Direct dependency connections from active layer nodes
-    var depIds={};
+    // Also: dependency edges that originate from active nodes (show the target too)
+    var extra={};
     Object.keys(activeIds).forEach(function(nid){
-      depsOf(nid).forEach(function(d){depIds[d]=true;});
+      depsOf(nid).forEach(function(d){extra[d]=true;});
     });
-    Object.keys(depIds).forEach(function(d){activeIds[d]=true;});
+    Object.keys(extra).forEach(function(d){activeIds[d]=true;});
   }
 
   // Build SVG
@@ -340,9 +340,9 @@ function render(){
     var n=graph.nodes[nid], pos=nodePositions[nid];
     if(!n||!pos) return;
     var inLayer=activeIds[nid];
-    var col=inLayer?sevColor(n.severity):"#9ca3af";
-    var opacity=inLayer?1:0.55;
-    var ptrEvents=inLayer?"auto":"auto"; // all clickable
+    var col=inLayer?sevColor(n.severity):"#d1d5db";
+    var opacity=inLayer?1:0.18;
+    var ptrEvents=inLayer?"auto":"none"; // only active layer clickable
     html+='<g data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')" opacity="'+opacity+'" style="pointer-events:'+ptrEvents+';cursor:pointer;">';
     if(inLayer){
       // Card shadow
