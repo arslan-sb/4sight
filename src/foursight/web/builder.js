@@ -306,17 +306,17 @@ function render(){
     var sw=isDep?1.5:2;
     var dash=isDep?"6 3":"none";
 
-    // For decomposition: influence flows child→parent (upward), draw child bottom to parent top
-    // For dependency: influence flows src→dst, draw src bottom/right to dst top/left
+    // All outgoing edges start from BOTTOM of the source node
+    // All incoming edges plug into the TOP of the target node
+    // Decomposition: child influences parent (child bottom → parent top)
+    // Dependency: src influences dst (src bottom → dst top)
     var x1, y1, x2, y2;
     if(!isDep){
-      // Decomposition: child (dst) influences parent (src). Arrow goes upward.
-      x1=to.x+NODE_W/2; y1=to.y+NODE_H;   // child bottom-center
-      x2=from.x+NODE_W/2; y2=from.y;       // parent top-center
+      x1=to.x+NODE_W/2; y1=to.y+NODE_H;  // child bottom-center
+      x2=from.x+NODE_W/2; y2=from.y;      // parent top-center
     }else{
-      // Dependency: src influences dst. Arrow goes from src to dst.
-      x1=from.x+NODE_W/2; y1=from.y+NODE_H/2; // src right-center
-      x2=to.x; y2=to.y+NODE_H/2;              // dst left-center
+      x1=from.x+NODE_W/2; y1=from.y+NODE_H; // src bottom-center
+      x2=to.x+NODE_W/2; y2=to.y;            // dst top-center
     }
 
     // Cubic bezier with control points offset vertically
