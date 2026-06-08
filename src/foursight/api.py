@@ -74,17 +74,27 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
     @app.post("/simulate-change")
     def simulate(body: dict):
         now = datetime.now(timezone.utc)
-        if body.get("kind") == "salary":
-            change = ChangeEvent(source="Payroll (redacted)", record_ref="comp_pool", before=None,
-                                 after={"effect_score": 46.0, "category": "compensation"},
+        kind = body.get("kind", "leave")
+        source = body.get("source", "Leave Calendar")
+        node_id = body.get("node_id", "alice_owner")
+        effect_score = float(body.get("effect_score", 40))
+
+        if kind == "salary":
+            change = ChangeEvent(source=source, record_ref=node_id, before=None,
+                                 after={"effect_score": effect_score, "category": "compensation"},
                                  at=now, sensitivity=Sensitivity.INTERNAL)
-            eng.on_data_change("comp_pool", change)
-            return {"changed": eng.fire_node("comp_pool")}
-        change = ChangeEvent(source="Leave Calendar", record_ref="alice", before=None,
-                             after={"capacity_drop_pct": 40, "single_owner": True, "data_age_h": 2},
-                             at=now, sensitivity=Sensitivity.INTERNAL)
-        eng.on_data_change("alice_owner", change)
-        return {"changed": eng.fire_node("alice_owner")}
+        elif kind == "leave":
+            change = ChangeEvent(source=source, record_ref=node_id, before=None,
+                                 after={"effect_score": effect_score,
+                                        "capacity_drop_pct": effect_score,
+                                        "single_owner": True, "data_age_h": 2},
+                                 at=now, sensitivity=Sensitivity.INTERNAL)
+        else:
+            change = ChangeEvent(source=source, record_ref=node_id, before=None,
+                                 after={"effect_score": effect_score}, at=now,
+                                 sensitivity=Sensitivity.INTERNAL)
+        eng.on_data_change(node_id, change)
+        return {"changed": eng.fire_node(node_id)}
 
     @app.websocket("/ws")
     async def ws(socket: WebSocket):
