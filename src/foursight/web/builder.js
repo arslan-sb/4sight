@@ -231,15 +231,12 @@ function onMouseUp(e){
 function onDblClick(e){
   var nid=getNodeFromEvent(e);
   if(!nid||!graph.nodes[nid]) return;
-  var n=graph.nodes[nid];
-  // Only leaf nodes can be drilled into for their sub-layer
-  if(n.kind==="leaf"){
-    layerStack.push(nid);
-    currentRoot=nid;
-    layoutGraph();
-    render();
-    updateLayerLabel();
-  }
+  // Any node can be drilled into to show its layer
+  layerStack.push(nid);
+  currentRoot=nid;
+  layoutGraph();
+  render();
+  updateLayerLabel();
 }
 
 function findSnapNode(mx,my){
@@ -340,9 +337,9 @@ function render(){
     var n=graph.nodes[nid], pos=nodePositions[nid];
     if(!n||!pos) return;
     var inLayer=activeIds[nid];
-    var col=inLayer?sevColor(n.severity):"#d1d5db";
-    var opacity=inLayer?1:0.18;
-    var ptrEvents=inLayer?"auto":"none"; // only active layer clickable
+    var col=inLayer?sevColor(n.severity):"#9ca3af";
+    var opacity=inLayer?1:0.4;
+    var ptrEvents="auto"; // always clickable for double-click navigation
     html+='<g data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')" opacity="'+opacity+'" style="pointer-events:'+ptrEvents+';cursor:pointer;">';
     if(inLayer){
       // Card shadow
