@@ -290,7 +290,7 @@ function render(){
   // Build SVG
   var html='';
 
-  // Edges -- show all, dim inactive, terminate at node boundaries
+  // Edges
   var drawnEdges={};
   (graph.edges||[]).forEach(function(e){
     var key=e.src+"-"+e.dst+"-"+e.type;
@@ -300,18 +300,27 @@ function render(){
     var isDep=e.type==="dependency";
     var inLayer=activeIds[e.src]||activeIds[e.dst];
     var strokeCol=inLayer?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):"#d1d5db";
-    var edgeOpacity=inLayer?1:0.3;
-    // Anchor at node boundaries
-    var fromCX=from.x+NODE_W/2, fromCY=from.y+NODE_H; // bottom-center of source
-    var toCX=to.x+NODE_W/2, toCY=to.y;                 // top-center of target
-    var x1=fromCX, y1=fromCY, x2=toCX, y2=toCY;
-    var mx=(x1+x2)/2, my=(y1+y2)/2;
-    var d="M"+x1+" "+y1+" Q"+mx+" "+y1+","+mx+" "+y2+","+x2+" "+y2;
-    html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+(isDep?1.5:2)+'" stroke-dasharray="'+(isDep?"6 3":"none")+'" opacity="'+edgeOpacity+'"/>';
+    var edgeOpacity=inLayer?1:0.25;
+    var sw=isDep?1.5:2;
+    var dash=isDep?"6 3":"none";
+
+    // Start: bottom-center of source. End: top-center of target.
+    var x1=from.x+NODE_W/2, y1=from.y+NODE_H;
+    var x2=to.x+NODE_W/2, y2=to.y;
+
+    // Cubic bezier with control points offset vertically
+    var dy=Math.max(Math.abs(y2-y1)/3, 30);
+    var d="M"+x1+" "+y1+" C"+x1+" "+(y1+dy)+" "+x2+" "+(y2-dy)+" "+x2+" "+y2;
+    html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+sw+'" stroke-dasharray="'+dash+'" opacity="'+edgeOpacity+'"/>';
+
+    // Arrowhead at midpoint (t=0.5 of cubic bezier)
     if(inLayer){
+      var t=0.5, mt=1-t;
+      var mx=mt*mt*mt*x1 + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x2;
+      var my=mt*mt*mt*y1 + 3*mt*mt*t*(y1+dy) + 3*mt*t*t*(y2-dy) + t*t*t*y2;
       var ang=Math.atan2(y2-y1,x2-x1);
-      var s=6, ax=mx, ay=my;
-      var points=(ax-s*Math.cos(ang-0.6))+","+(ay-s*Math.sin(ang-0.6))+" "+(ax-s*Math.cos(ang+0.6))+","+(ay-s*Math.sin(ang+0.6))+" "+ax+","+ay;
+      var s=5;
+      var points=(mx-s*Math.cos(ang-0.5))+","+(my-s*Math.sin(ang-0.5))+" "+(mx-s*Math.cos(ang+0.5))+","+(my-s*Math.sin(ang+0.5))+" "+mx+","+my;
       html+='<polygon points="'+points+'" fill="'+strokeCol+'"/>';
     }
   });
