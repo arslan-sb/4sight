@@ -206,75 +206,78 @@ function depsOf(nid){
 }
 
 function render(){
-  var visibleIds={};
-  // Current root always visible
-  if(currentRoot) visibleIds[currentRoot]=true;
-  // Its decomposition children
-  childrenOf(currentRoot).forEach(function(c){visibleIds[c]=true;});
-  // Dependency-connected nodes to any visible node
-  var depIds={};
-  Object.keys(visibleIds).forEach(function(nid){
-    depsOf(nid).forEach(function(d){if(d!==currentRoot) depIds[d]=true;});
-  });
-  Object.keys(depIds).forEach(function(d){visibleIds[d]=true;});
-
-  // Parent layer faint
-  var parentId=parentOf(currentRoot);
+  // Compute which nodes are in the "active" layer (full opacity)
+  var activeIds={};
+  if(currentRoot){
+    activeIds[currentRoot]=true;
+    childrenOf(currentRoot).forEach(function(c){activeIds[c]=true;});
+    // Direct dependency connections from active layer nodes
+    var depIds={};
+    Object.keys(activeIds).forEach(function(nid){
+      depsOf(nid).forEach(function(d){depIds[d]=true;});
+    });
+    Object.keys(depIds).forEach(function(d){activeIds[d]=true;});
+  }
 
   // Build SVG
   var html='';
 
-  // Edges with mid-point arrows
+  // Edges -- show all, dim ones not in active layer
   var drawnEdges={};
   (graph.edges||[]).forEach(function(e){
-    if(!visibleIds[e.src]&&!visibleIds[e.dst]) return;
     var key=e.src+"-"+e.dst+"-"+e.type;
     if(drawnEdges[key]) return; drawnEdges[key]=true;
     var from=nodePositions[e.src], to=nodePositions[e.dst];
     if(!from||!to) return;
     var isDep=e.type==="dependency";
-    var strokeCol=isDep?COLORS.edgeDep:COLORS.edgeDecomp;
-    var cls=isDep?"edge-line edge-dep":"edge-line edge-decomp";
+    var inLayer=activeIds[e.src]||activeIds[e.dst];
+    var strokeCol=inLayer?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):"#d1d5db";
+    var edgeOpacity=inLayer?1:0.3;
     var x1=from.x+NODE_W/2, y1=from.y+NODE_H;
     var x2=to.x+NODE_W/2, y2=to.y;
     var mx=(x1+x2)/2, my=(y1+y2)/2;
     var d="M"+x1+" "+y1+" Q"+x1+" "+my+","+mx+" "+my+" Q"+x2+" "+my+","+x2+" "+y2;
-    html+='<path d="'+d+'" class="'+cls+'" stroke="'+strokeCol+'"/>';
-    // Arrowhead at midpoint
-    var ang=Math.atan2(y2-y1,x2-x1);
-    var s=6;
-    var ax=mx, ay=my;
-    var points=(ax-s*Math.cos(ang-0.6))+","+(ay-s*Math.sin(ang-0.6))+" "+(ax-s*Math.cos(ang+0.6))+","+(ay-s*Math.sin(ang+0.6))+" "+ax+","+ay;
-    html+='<polygon points="'+points+'" fill="'+strokeCol+'"/>';
+    html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+(isDep?1.5:2)+'" stroke-dasharray="'+(isDep?"6 3":"none")+'" opacity="'+edgeOpacity+'"/>';
+    if(inLayer){
+      var ang=Math.atan2(y2-y1,x2-x1);
+      var s=6, ax=mx, ay=my;
+      var points=(ax-s*Math.cos(ang-0.6))+","+(ay-s*Math.sin(ang-0.6))+" "+(ax-s*Math.cos(ang+0.6))+","+(ay-s*Math.sin(ang+0.6))+" "+ax+","+ay;
+      html+='<polygon points="'+points+'" fill="'+strokeCol+'"/>';
+    }
   });
 
-  // Nodes
-  Object.keys(visibleIds).forEach(function(nid){
+  // Nodes -- show ALL, dim inactive ones
+  var allIds=Object.keys(graph.nodes);
+  allIds.forEach(function(nid){
     var n=graph.nodes[nid], pos=nodePositions[nid];
     if(!n||!pos) return;
-    var col=sevColor(n.severity);
-    var isParent= nid===parentId;
-    var cls="node-card"+(isParent?" faint":"");
-    html+='<g class="'+cls+'" data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')">';
-    // Card shadow
-    html+='<rect x="2" y="3" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="#00000010"/>';
+    var inLayer=activeIds[nid];
+    var col=inLayer?sevColor(n.severity):"#9ca3af";
+    var opacity=inLayer?1:0.55;
+    var ptrEvents=inLayer?"auto":"auto"; // all clickable
+    html+='<g data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')" opacity="'+opacity+'" style="pointer-events:'+ptrEvents+';cursor:pointer;">';
+    if(inLayer){
+      // Card shadow
+      html+='<rect x="2" y="3" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="#00000010"/>';
+    }
     // Card body
-    html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="'+COLORS.cardBg+'" stroke="'+(nid===selectedNode?col:COLORS.cardStroke)+'" stroke-width="'+(nid===selectedNode?2:1)+'"/>';
+    html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="'+COLORS.cardBg+'" stroke="'+(nid===selectedNode?col:inLayer?COLORS.cardStroke:"#e5e7eb")+'" stroke-width="'+(nid===selectedNode?2:1)+'"/>';
     // Left accent bar
     html+='<rect x="0" y="4" width="4" height="'+(NODE_H-8)+'" rx="2" fill="'+col+'"/>';
     // Severity dot
-    if(n.severity) html+='<circle cx="18" cy="18" r="5" fill="'+col+'"/>';
+    if(n.severity||!inLayer) html+='<circle cx="18" cy="18" r="5" fill="'+col+'"/>';
     // Title
     var title=(n.title||nid); if(title.length>20) title=title.slice(0,18)+"..";
-    html+='<text x="'+(n.severity?30:16)+'" y="22" fill="'+COLORS.text+'" font-size="13" font-family="system-ui" font-weight="600">'+esc(title)+'</text>';
+    html+='<text x="30" y="22" fill="'+(inLayer?COLORS.text:"#9ca3af")+'" font-size="13" font-family="system-ui" font-weight="600">'+esc(title)+'</text>';
     // Kind badge
-    html+='<text x="'+(n.severity?30:16)+'" y="40" fill="'+COLORS.textDim+'" font-size="11" font-family="system-ui">'+(n.kind||"task")+'</text>';
+    html+='<text x="30" y="40" fill="'+(inLayer?COLORS.textDim:"#c7cbd3")+'" font-size="11" font-family="system-ui">'+(n.kind||"task")+'</text>';
     // Severity badge
     if(n.severity) html+='<text x="'+(NODE_W-12)+'" y="22" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui">'+n.severity.toUpperCase()+'</text>';
-    // Output port (right side, middle)
-    html+='<circle class="node-port" data-node="'+nid+'" cx="'+NODE_W+'" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="'+col+'" stroke="'+col+'" stroke-width="1.5"/>';
-    // Input port (left side, middle)
-    html+='<circle cx="0" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="none" stroke="'+COLORS.cardStroke+'" stroke-width="1"/>';
+    // Ports only for active layer
+    if(inLayer){
+      html+='<circle class="node-port" data-node="'+nid+'" cx="'+NODE_W+'" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="'+col+'" stroke="'+col+'" stroke-width="1.5"/>';
+      html+='<circle cx="0" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="none" stroke="'+COLORS.cardStroke+'" stroke-width="1"/>';
+    }
     html+='</g>';
   });
 
