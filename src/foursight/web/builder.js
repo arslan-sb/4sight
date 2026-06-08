@@ -322,8 +322,10 @@ function render(){
     if(!from||!to) return;
     var isDep=e.type==="dependency";
     var bothActive=activeIds[e.src]&&activeIds[e.dst];
-    var strokeCol=bothActive?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):"#d1d5db";
-    var edgeOpacity=bothActive?1:0.12;
+    // Dependency edges always visible (cross-branch context)
+    var isDep=e.type==="dependency";
+    var strokeCol=bothActive?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):(isDep?COLORS.edgeDep:"#d1d5db");
+    var edgeOpacity=(bothActive||isDep)?1:0.12;
     var sw=isDep?1.5:2;
     var dash=isDep?"6 3":"none";
 
@@ -469,20 +471,25 @@ function selectNode(nid){
   document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
   document.getElementById("panel-relations").style.display="block";
   document.getElementById("btn-delete").style.display="block";
-  // Enable inject button if node has threshold rules
-  var hasRules=n.data_binding&&n.data_binding.threshold_rules&&n.data_binding.threshold_rules.length>0;
-  if(hasRules||(n.threshold_rules&&n.threshold_rules.length>0)){
-    document.getElementById("btn-inject").disabled=false;
-  }else{
-    document.getElementById("btn-inject").disabled=true;
-  }
+  // Enable inject button if node has threshold_rules (flattened from API)
+  var hasRules=n.threshold_rules&&n.threshold_rules.length>0;
+  document.getElementById("btn-inject").disabled=!hasRules;
   onKindChange();
   fetch("/builder/nodes/"+nid).then(function(r){return r.json();}).then(function(d){
-    // "I depend on" = my children (decomp outgoing) + dependency targets (I point dep edges to them)
+    // Update local node from server
+    n.description=d.description||n.description||"";
+    n.threshold_rules=d.threshold_rules||[];
+    n.raw_value=d.raw_value;
+    n.trigger_threshold=d.trigger_threshold;
+    document.getElementById("panel-desc").value=n.description||"";
+    document.getElementById("panel-threshold").value=n.trigger_threshold||25;
+    document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
+    hasRules=n.threshold_rules&&n.threshold_rules.length>0;
+    document.getElementById("btn-inject").disabled=!hasRules;
+
     var iDepend=[];
     (d.children||[]).forEach(function(c){iDepend.push({id:c,type:"decomp"});});
     (d.dependents||[]).forEach(function(c){iDepend.push({id:c,type:"dep"});});
-    // "Depends on me" = my parents (decomp incoming) + dependency sources (they point dep edges to me)
     var depOnMe=[];
     (d.parents||[]).forEach(function(p){depOnMe.push({id:p,type:"decomp"});});
     (d.dependencies||[]).forEach(function(p){depOnMe.push({id:p,type:"dep"});});
