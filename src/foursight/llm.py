@@ -54,23 +54,24 @@ class DeepSeekLLM:
                   'Reply JSON: {"final_score": number, "rationale": string, "adjusted": bool}.')
         resp = self._client.messages.create(
             model=self.model,
-            max_tokens=1024,
-            thinking={"type": "enabled", "budget_tokens": 16000},
+            max_tokens=2048,
+            thinking={"type": "enabled", "budget_tokens": 32000},
             messages=[{"role": "user", "content": prompt}],
         )
-        data = json.loads(self._extract_text(resp))
+        raw = self._extract_text(resp)
+        data = json.loads(raw)
         score = float(data["final_score"])
         return LLMVerdict(final_score=score, severity=severity_from_score(score),
                           rationale=data.get("rationale", ""),
                           adjusted=bool(data.get("adjusted", False)),
-                          model=self.model)
+                          model=self.model, raw_response=raw)
 
     def generate_overall(self, node, drivers) -> str:
         lines = "\n".join(f"- {d.line}" for d in drivers) or "none"
         resp = self._client.messages.create(
             model=self.model,
-            max_tokens=256,
-            thinking={"type": "enabled", "budget_tokens": 4000},
+            max_tokens=512,
+            thinking={"type": "enabled", "budget_tokens": 10000},
             messages=[{"role": "user", "content":
                        f"Write a 2-sentence risk summary for '{node.title}'. Drivers:\n{lines}\n"
                        "Do not invent specifics beyond the drivers."}],
