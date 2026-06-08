@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>4sight -- Graph Explorer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; background:#0f1115; color:#e6e6e6; }
+    button { padding: 6px 12px; cursor: pointer; background:#1a1d24; color:#e6e6e6; border:1px solid #2a2e36; border-radius:6px; }
+    button:hover { background:#2a2e36; }
+    .nav { display:flex; gap:8px; margin-bottom:16px; }
+    .nav a { color:#6b8cff; text-decoration:none; font-size:14px; }
+    .nav a:hover { text-decoration:underline; }
+    .crumb { opacity: 0.6; font-size: 13px; margin: 14px 0; }
+    .node { border:1px solid #2a2e36; border-radius:8px; padding:8px 12px; margin:4px 0; cursor:pointer; display:flex; align-items:center; gap:10px; transition:background 0.15s; }
+    .node:hover { background:#1a1d24; }
+    .node-label { flex:1; font-size:14px; }
+    .node-kind { font-size:10px; opacity:0.5; text-transform:uppercase; }
+    .sev-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .sev-dot-critical { background:#ff6b6b; box-shadow:0 0 8px #ff6b6b; }
+    .sev-dot-high { background:#ffb347; box-shadow:0 0 6px #ffb347; }
+    .sev-dot-medium { background:#ffd700; }
+    .sev-dot-low { background:#4caf50; }
+    .sev-dot-none { background:#3a3e46; }
+    .children { margin-left:24px; border-left:1px solid #2a2e36; padding-left:12px; }
+    .dep-tag { font-size:10px; background:#1a2740; color:#6b8cff; padding:2px 6px; border-radius:3px; margin-left:6px; }
+    .expand { font-size:12px; width:20px; text-align:center; opacity:0.5; flex-shrink:0; }
+    select { background:#1a1d24; color:#e6e6e6; border:1px solid #2a2e36; border-radius:6px; padding:6px 10px; }
+    #detail { border:1px solid #2a2e36; border-radius:12px; padding:18px; margin-top:16px; display:none; }
+    #detail h3 { margin-top:0; }
+    .sev { font-weight:700; padding:2px 8px; border-radius:4px; font-size:13px; }
+    .sev-critical { background:#4a1018; color:#ff6b6b; }
+    .sev-high { background:#3d2e0a; color:#ffb347; }
+    .sev-medium { background:#2d2a0a; color:#ffd700; }
+    .sev-low { background:#0a2d0a; color:#4caf50; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/">Report Viewer</a>
+    <span style="opacity:0.3">|</span>
+    <a href="/graph">Graph Explorer</a>
+  </div>
+  <h1>Graph Explorer</h1>
+  <div>
+    View as:
+    <select id="role" onchange="reload()">
+      <option value="reviewer">reviewer</option>
+      <option value="privileged">privileged</option>
+    </select>
+    <button onclick="reload()" style="margin-left:8px;">Refresh</button>
+  </div>
+  <div class="crumb" id="crumb"></div>
+  <div id="tree"></div>
+  <div id="detail"></div>
+  <script src="/static/graph.js"></script>
+  <script>boot();</script>
+</body>
+</html>

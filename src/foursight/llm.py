@@ -49,14 +49,43 @@ class DeepSeekLLM:
     def verify_score(self, node, rule_score, rule_inputs, grounding) -> LLMVerdict:
         import json
         ctx = "\n".join(f"- {g.doc}" for g in grounding) or "none"
-        prompt = (f"Verify an operational-risk score (0-100) for task '{node.title}'.\n"
-                  f"Rule score: {rule_score}. Inputs: {json.dumps(rule_inputs)}.\nGrounding:\n{ctx}\n"
-                  'Reply JSON: {"final_score": number, "rationale": string, "adjusted": bool}.')
         resp = self._client.messages.create(
             model=self.model,
             max_tokens=2048,
             thinking={"type": "enabled", "budget_tokens": 32000},
-            messages=[{"role": "user", "content": prompt}],
+            system=(
+                "You are an operational risk assessor for a semiconductor supply chain. "
+                "Your job is to verify or adjust a rule-based risk score (0-100) using "
+                "qualitative context from policy documents and domain knowledge.\n\n"
+                "Scoring framework:\n"
+                "- 0-24: LOW risk. Normal operations. Minor fluctuations.\n"
+                "- 25-49: MEDIUM risk. Notable disruption in one area. Monitor closely.\n"
+                "- 50-74: HIGH risk. Significant disruption affecting multiple dependencies. "
+                "Escalate to leadership.\n"
+                "- 75-100: CRITICAL risk. Severe, cascading failure across the supply chain. "
+                "Immediate action required.\n\n"
+                "Adjustment rules:\n"
+                "- Single-owner dependencies (no backup): raise score significantly, "
+                "especially if the owner is unavailable.\n"
+                "- Capacity drops exceeding 30% on a sole source: escalate to HIGH or CRITICAL.\n"
+                "- Fuel or logistics volatility: factor into dependent freight lanes.\n"
+                "- Yield rate degradation: assess impact on downstream fabs.\n"
+                "- Redundancy (multiple suppliers or buffer stock) mitigates risk: "
+                "reduce score when alternatives exist.\n"
+                "- Cross-branch dependencies amplify impact: a problem in one area "
+                "can cascade through dependency edges.\n\n"
+                "Your rationale must reference specific risk factors from the rule inputs, "
+                "explain why you adjusted or kept the score, and note any mitigating "
+                "or amplifying factors. Be concise but thorough."
+            ),
+            messages=[{"role": "user", "content": (
+                f"Task: '{node.title}'\n"
+                f"Rule score: {rule_score}\n"
+                f"Inputs: {json.dumps(rule_inputs)}\n"
+                f"Relevant policies:\n{ctx}\n\n"
+                'Reply with JSON only: {"final_score": <number 0-100>, '
+                '"rationale": "<your reasoning>", "adjusted": <true|false>}'
+            )}],
         )
         raw = self._extract_text(resp)
         data = json.loads(raw)
@@ -72,8 +101,17 @@ class DeepSeekLLM:
             model=self.model,
             max_tokens=512,
             thinking={"type": "enabled", "budget_tokens": 10000},
-            messages=[{"role": "user", "content":
-                       f"Write a 2-sentence risk summary for '{node.title}'. Drivers:\n{lines}\n"
-                       "Do not invent specifics beyond the drivers."}],
+            system=(
+                "You are a risk report writer for a semiconductor supply chain. "
+                "Your audience is operations leadership. Write concise, factual summaries "
+                "grounded in the driver bullets provided. Never invent specifics, names, "
+                "or metrics beyond what the drivers contain. Use precise operational "
+                "language. If drivers mention personnel issues, note the impact on "
+                "coverage. If drivers mention supplier or logistics issues, note the "
+                "supply chain implications. Keep to 2-3 sentences."
+            ),
+            messages=[{"role": "user", "content": (
+                f"Write a risk summary for '{node.title}'. Top drivers:\n{lines}"
+            )}],
         )
         return self._extract_text(resp).strip()

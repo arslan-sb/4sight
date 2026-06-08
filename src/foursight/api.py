@@ -37,6 +37,30 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         f = WEB / "index.html"
         return f.read_text() if f.exists() else "<h1>4sight (web not built yet)</h1>"
 
+    @app.get("/graph", response_class=HTMLResponse)
+    def graph():
+        f = WEB / "graph.html"
+        return f.read_text() if f.exists() else "<h1>graph not built yet</h1>"
+
+    @app.get("/graph-data")
+    def graph_data(role: str = "reviewer"):
+        viewer = Viewer(id="anon", role=Role(role))
+        nodes = {}
+        for nid in store.all_ids():
+            node = store.get_node(nid)
+            entry = {
+                "id": nid,
+                "title": node.title,
+                "kind": node.kind.value,
+                "children": store.children(nid),
+                "dependencies": [d for d in store.dependencies(nid)],
+                "severity": None,
+            }
+            if node.current:
+                entry["severity"] = node.current.llm_verdict.severity.value
+            nodes[nid] = entry
+        return nodes
+
     @app.get("/report/{node_id}")
     def report(node_id: str, role: str = "reviewer"):
         rep = get_report_fn(node_id, store, Viewer(id="anon", role=Role(role)))
