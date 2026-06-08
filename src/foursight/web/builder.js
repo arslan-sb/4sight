@@ -23,7 +23,7 @@ function init(){
   svgEl.addEventListener("mousemove",onMouseMove);
   svgEl.addEventListener("mouseup",onMouseUp);
   svgEl.addEventListener("dblclick",onDblClick);
-  svgEl.addEventListener("contextmenu",function(e){e.preventDefault();});
+  svgEl.addEventListener("contextmenu",onContextMenu);
   window.addEventListener("resize",resizeSVG);
   resizeSVG();
   loadGraph();
@@ -221,11 +221,41 @@ function onMouseUp(e){
   if(portDrag){
     var snap=findSnapNode(e.clientX,e.clientY);
     if(snap&&snap!==portDrag.from){
-      addDependencyEdge(portDrag.from,snap);
+      addDecompEdge(portDrag.from,snap);
     }
     if(portLine){ portLine.remove(); portLine=null; }
     portDrag=null; svgEl.classList.remove("dragging"); render();
   }
+}
+
+var contextNodeId=null;
+
+function onContextMenu(e){
+  e.preventDefault();
+  var nid=getNodeFromEvent(e);
+  if(!nid) return;
+  contextNodeId=nid;
+  var menu=document.createElement("div");
+  menu.style.cssText="position:fixed;background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:4px 0;z-index:300;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,0.15);";
+  menu.style.left=e.clientX+"px"; menu.style.top=e.clientY+"px";
+  menu.innerHTML=
+    '<div style="padding:8px 16px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\"#f3f4f6\"" onmouseout="this.style.background=\"\"">'+nid+'</div>'+
+    '<div style="padding:8px 16px;cursor:pointer;font-size:13px;color:#3b82f6;" onmouseover="this.style.background=\"#f3f4f6\"" onmouseout="this.style.background=\"\"">Add dependency edge from...</div>';
+  menu.children[1].onclick=function(){
+    var target=prompt("Create dependency edge FROM node (ID):");
+    if(target&&graph.nodes[target]&&target!==nid){
+      var exists=graph.edges.some(function(e){return e.src===target&&e.dst===nid&&e.type==="dependency";});
+      if(!exists){
+        graph.edges.push({src:target,dst:nid,type:"dependency"});
+        fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:target,dst:nid,type:"dependency"})});
+        render();
+      }
+    }
+    menu.remove();
+  };
+  document.body.appendChild(menu);
+  setTimeout(function(){menu.remove();},5000);
+  document.addEventListener("click",function rm(){menu.remove();document.removeEventListener("click",rm);},{once:true});
 }
 
 function onDblClick(e){
@@ -416,14 +446,7 @@ async function saveNodePanel(){
     body.query=document.getElementById("panel-query").value||"";
   }
 
-  if(creatingKind){
-    // Auto-wire: link to current root as decomposition
-    if(currentRoot){
-      graph.edges.push({src:currentRoot,dst:nid,type:"decomposition"});
-      fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:currentRoot,dst:nid,type:"decomposition"})});
-    }
-  }
-
+  // Create node as orphan first, user wires it manually
   fetch("/builder/nodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
     if(d.deduped){nid=d.id;}
     body.id=nid;
@@ -487,11 +510,12 @@ function deleteSelectedNode(){
   });
 }
 
-function addDependencyEdge(fromId,toId){
-  var exists=(graph.edges||[]).some(function(e){return e.src===fromId&&e.dst===toId&&e.type==="dependency";});
+function addDecompEdge(parentId,childId){
+  var exists=(graph.edges||[]).some(function(e){return e.src===parentId&&e.dst===childId&&e.type==="decomposition";});
   if(exists) return;
-  graph.edges.push({src:fromId,dst:toId,type:"dependency"});
-  fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:fromId,dst:toId,type:"dependency"})});
+  graph.edges.push({src:parentId,dst:childId,type:"decomposition"});
+  fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:parentId,dst:childId,type:"decomposition"})});
+  layoutGraph();
   render();
 }
 
@@ -521,9 +545,20 @@ function deleteContextNode(){
 function addNode(kind){ startCreate(kind); }
 
 async function runBatchAssess(){
+  // Check for orphan nodes (no edges at all)
+  var orphans=[];
+  Object.keys(graph.nodes).forEach(function(nid){
+    var hasEdge=(graph.edges||[]).some(function(e){return e.src===nid||e.dst===nid;});
+    if(!hasEdge) orphans.push(nid);
+  });
+  if(orphans.length>0){
+    alert("Cannot run assessment. Orphan nodes (no edges):\n"+orphans.join(", "));
+    return;
+  }
   var r=await fetch("/builder/batch-assess",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"full"})});
   var data=await r.json();
   data.forEach(function(a){if(graph.nodes[a.node_id]){graph.nodes[a.node_id].severity=a.severity;}});
+  layoutGraph();
   render();
 }
 
