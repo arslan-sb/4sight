@@ -9,14 +9,25 @@ def _now(): return datetime.now(timezone.utc)
 
 
 def generate_report(node, store: GraphStore, llm) -> Report:
-    ids = store.children(node.id) + store.dependencies(node.id)
-    contribs = [store.get_node(i) for i in ids if store.get_node(i).current]
+    child_ids = store.children(node.id)
+    dep_ids = store.dependencies(node.id)
+    contribs = [store.get_node(i) for i in (child_ids + dep_ids) if store.get_node(i).current]
     contribs.sort(key=lambda n: n.current.llm_verdict.final_score, reverse=True)
-    drivers = [DriverBullet(node_id=n.id, severity=n.current.llm_verdict.severity,
-                            line=f"{n.title}: {n.current.llm_verdict.severity.value}")
-               for n in contribs[:3]]
+
+    if contribs:
+        drivers = [DriverBullet(node_id=n.id, severity=n.current.llm_verdict.severity,
+                                line=f"{n.title}: {n.current.llm_verdict.severity.value}")
+                   for n in contribs[:3]]
+    elif node.kind.value == "leaf" and node.current.change:
+        drivers = [DriverBullet(node_id=node.id, severity=node.current.llm_verdict.severity,
+                                line=f"{node.current.change.source}: effect {node.current.llm_verdict.final_score:.0f}")]
+    else:
+        drivers = [DriverBullet(node_id=node.id, severity=node.current.llm_verdict.severity,
+                                line=f"{node.title}: score {node.current.llm_verdict.final_score:.0f}")]
+
+    overall = llm.generate_overall(node, drivers)
     report = Report(node_id=node.id, version=node.current.version, generated_at=_now(),
-                    severity=node.current.llm_verdict.severity, overall=llm.generate_overall(node, drivers),
+                    severity=node.current.llm_verdict.severity, overall=overall,
                     drivers=drivers, changed_since=[n.title for n in contribs if len(n.history) > 1][:3],
                     watch_items=[], grounding=node.current.grounding, disclosure=node.current.sensitivity)
     node.report = report

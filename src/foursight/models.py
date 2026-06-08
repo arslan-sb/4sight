@@ -78,6 +78,7 @@ class LLMVerdict(BaseModel):
     rationale: str
     adjusted: bool = False
     model: str = "fake"
+    raw_response: str = ""
 
 
 class Assessment(BaseModel):

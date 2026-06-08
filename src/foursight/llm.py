@@ -27,38 +27,95 @@ class FakeLLM:
 
     def generate_overall(self, node, drivers) -> str:
         sev = node.current.llm_verdict.severity.value if node.current else "unknown"
-        top = drivers[0].line if drivers else "no active drivers"
-        return f"{node.title} is at {sev} risk. Primary driver: {top}."
+        if not drivers:
+            return f"{node.title} is at {sev} risk."
+        first = drivers[0]
+        if first.node_id == node.id:
+            return f"{node.title} is at {sev} risk. {first.line}."
+        return f"{node.title} is at {sev} risk. Primary driver: {first.line}."
 
 
 class DeepSeekLLM:
-    model = "deepseek-chat"
+    model = "deepseek-v4-flash"
 
     def __init__(self) -> None:
-        from openai import OpenAI
-        self._client = OpenAI(api_key=os.environ["DEEPSEEK_API_KEY"],
-                              base_url="https://api.deepseek.com")
+        from anthropic import Anthropic
+        self._client = Anthropic(api_key=os.environ["DEEPSEEK_API_KEY"],
+                                 base_url="https://api.deepseek.com/anthropic")
+
+    def _extract_text(self, response) -> str:
+        text = ""
+        for block in response.content:
+            if block.type == "text":
+                text += block.text
+        return text
 
     def verify_score(self, node, rule_score, rule_inputs, grounding) -> LLMVerdict:
         import json
         ctx = "\n".join(f"- {g.doc}" for g in grounding) or "none"
-        prompt = (f"Verify an operational-risk score (0-100) for task '{node.title}'.\n"
-                  f"Rule score: {rule_score}. Inputs: {json.dumps(rule_inputs)}.\nGrounding:\n{ctx}\n"
-                  'Reply JSON: {"final_score": number, "rationale": string, "adjusted": bool}.')
-        resp = self._client.chat.completions.create(
-            model=self.model, messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}, temperature=0)
-        data = json.loads(resp.choices[0].message.content)
+        resp = self._client.messages.create(
+            model=self.model,
+            max_tokens=2048,
+            thinking={"type": "enabled", "budget_tokens": 32000},
+            system=(
+                "You are an operational risk assessor for a semiconductor supply chain. "
+                "Your job is to verify or adjust a rule-based risk score (0-100) using "
+                "qualitative context from policy documents and domain knowledge.\n\n"
+                "Scoring framework:\n"
+                "- 0-24: LOW risk. Normal operations. Minor fluctuations.\n"
+                "- 25-49: MEDIUM risk. Notable disruption in one area. Monitor closely.\n"
+                "- 50-74: HIGH risk. Significant disruption affecting multiple dependencies. "
+                "Escalate to leadership.\n"
+                "- 75-100: CRITICAL risk. Severe, cascading failure across the supply chain. "
+                "Immediate action required.\n\n"
+                "Adjustment rules:\n"
+                "- Single-owner dependencies (no backup): raise score significantly, "
+                "especially if the owner is unavailable.\n"
+                "- Capacity drops exceeding 30% on a sole source: escalate to HIGH or CRITICAL.\n"
+                "- Fuel or logistics volatility: factor into dependent freight lanes.\n"
+                "- Yield rate degradation: assess impact on downstream fabs.\n"
+                "- Redundancy (multiple suppliers or buffer stock) mitigates risk: "
+                "reduce score when alternatives exist.\n"
+                "- Cross-branch dependencies amplify impact: a problem in one area "
+                "can cascade through dependency edges.\n\n"
+                "Your rationale must reference specific risk factors from the rule inputs, "
+                "explain why you adjusted or kept the score, and note any mitigating "
+                "or amplifying factors. Be concise but thorough."
+            ),
+            messages=[{"role": "user", "content": (
+                f"Task: '{node.title}'\n"
+                f"Rule score: {rule_score}\n"
+                f"Inputs: {json.dumps(rule_inputs)}\n"
+                f"Relevant policies:\n{ctx}\n\n"
+                'Reply with JSON only: {"final_score": <number 0-100>, '
+                '"rationale": "<your reasoning>", "adjusted": <true|false>}'
+            )}],
+        )
+        raw = self._extract_text(resp)
+        data = json.loads(raw)
         score = float(data["final_score"])
         return LLMVerdict(final_score=score, severity=severity_from_score(score),
-                          rationale=data.get("rationale", ""), adjusted=bool(data.get("adjusted", False)),
-                          model=self.model)
+                          rationale=data.get("rationale", ""),
+                          adjusted=bool(data.get("adjusted", False)),
+                          model=self.model, raw_response=raw)
 
     def generate_overall(self, node, drivers) -> str:
         lines = "\n".join(f"- {d.line}" for d in drivers) or "none"
-        resp = self._client.chat.completions.create(
-            model=self.model, temperature=0,
-            messages=[{"role": "user", "content":
-                       f"Write a 2-sentence risk summary for '{node.title}'. Drivers:\n{lines}\n"
-                       "Do not invent specifics beyond the drivers."}])
-        return resp.choices[0].message.content.strip()
+        resp = self._client.messages.create(
+            model=self.model,
+            max_tokens=512,
+            thinking={"type": "enabled", "budget_tokens": 10000},
+            system=(
+                "You are a risk report writer for a semiconductor supply chain. "
+                "Your audience is operations leadership. Write concise, factual summaries "
+                "grounded in the driver bullets provided. Never invent specifics, names, "
+                "or metrics beyond what the drivers contain. Use precise operational "
+                "language. If drivers mention personnel issues, note the impact on "
+                "coverage. If drivers mention supplier or logistics issues, note the "
+                "supply chain implications. Keep to 2-3 sentences."
+            ),
+            messages=[{"role": "user", "content": (
+                f"Write a risk summary for '{node.title}'. Top drivers:\n{lines}"
+            )}],
+        )
+        return self._extract_text(resp).strip()
