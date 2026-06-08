@@ -134,8 +134,8 @@ class DeepSeekLLM:
     def batch_assess(self, system: str, prompt: str) -> str:
         resp = self._client.messages.create(
             model=self.model,
-            max_tokens=8192,
-            thinking={"type": "enabled", "budget_tokens": 32000},
+            max_tokens=4096,
+            thinking={"type": "enabled", "budget_tokens": 8000},
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )

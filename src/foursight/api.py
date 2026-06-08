@@ -58,8 +58,12 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         except Exception:
             llm = FakeLLM()
         system, messages = flatten.build_batch_prompt(mode=mode)
-        raw = llm.batch_assess(system, messages[0]["content"])
-        assessments = flatten.parse_batch_response(raw)
+        try:
+            raw = llm.batch_assess(system, messages[0]["content"])
+            assessments = flatten.parse_batch_response(raw)
+        except Exception:
+            raw = FakeLLM().batch_assess(system, messages[0]["content"])
+            assessments = flatten.parse_batch_response(raw)
         for a in assessments:
             node = store.get_node(a["node_id"])
             node.current = a
