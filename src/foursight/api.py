@@ -42,6 +42,30 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         f = WEB / "graph.html"
         return f.read_text() if f.exists() else "<h1>graph not built yet</h1>"
 
+    @app.get("/builder", response_class=HTMLResponse)
+    def builder():
+        f = WEB / "builder.html"
+        return f.read_text() if f.exists() else "<h1>builder not built yet</h1>"
+
+    @app.post("/builder/batch-assess")
+    def builder_batch_assess(body: dict):
+        from .flatten import FlattenEngine
+        from .llm import DeepSeekLLM, FakeLLM
+        mode = body.get("mode", "full")
+        flatten = FlattenEngine(store)
+        try:
+            llm = DeepSeekLLM()
+        except Exception:
+            llm = FakeLLM()
+        system, messages = flatten.build_batch_prompt(mode=mode)
+        raw = llm.batch_assess(system, messages[0]["content"])
+        assessments = flatten.parse_batch_response(raw)
+        for a in assessments:
+            node = store.get_node(a["node_id"])
+            node.current = a
+            node.delta_accumulator = 0.0
+        return assessments
+
     @app.get("/raw", response_class=HTMLResponse)
     def raw_graph():
         f = WEB / "raw.html"
