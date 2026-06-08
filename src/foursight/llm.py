@@ -12,6 +12,8 @@ class LLM(Protocol):
 
     def generate_overall(self, node: Node, drivers: list[DriverBullet]) -> str: ...
 
+    def batch_assess(self, system: str, prompt: str) -> str: ...
+
 
 class FakeLLM:
     model = "fake"
@@ -33,6 +35,15 @@ class FakeLLM:
         if first.node_id == node.id:
             return f"{node.title} is at {sev} risk. {first.line}."
         return f"{node.title} is at {sev} risk. Primary driver: {first.line}."
+
+    def batch_assess(self, system: str, prompt: str) -> str:
+        import json, re
+        ids = re.findall(r'id=(\S+)\)', prompt)
+        results = []
+        for nid in ids:
+            results.append({"node_id": nid, "final_score": 20.0, "severity": "low",
+                           "rationale": "batch fake", "summary": f"Fake summary for {nid}"})
+        return json.dumps(results) if results else json.dumps([{"node_id": "root", "final_score": 20.0, "severity": "low", "rationale": "batch fake", "summary": "Fake"}])
 
 
 class DeepSeekLLM:
@@ -119,3 +130,13 @@ class DeepSeekLLM:
             )}],
         )
         return self._extract_text(resp).strip()
+
+    def batch_assess(self, system: str, prompt: str) -> str:
+        resp = self._client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            thinking={"type": "enabled", "budget_tokens": 8000},
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return self._extract_text(resp)

@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>4sight -- Graph Builder</title>
+  <link rel="stylesheet" href="/static/builder.css">
+</head>
+<body>
+  <div id="toolbar">
+    <button onclick="addNode('task')">+ Task</button>
+    <button onclick="addNode('leaf')">+ Data Source</button>
+    <span class="sep"></span>
+    <button class="primary" onclick="runBatchAssess()">Run Assessment</button>
+    <span class="sep"></span>
+    <button onclick="resetView()">Reset View</button>
+  </div>
+  <div id="breadcrumb"></div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="context-menu">
+    <div class="item" onclick="addDependency()">Add dependency to this node</div>
+    <div class="item" onclick="deleteNode()" style="color:#ff6b6b;">Delete node</div>
+  </div>
+  <div id="node-panel">
+    <h3 id="panel-title">Node</h3>
+    <label>Title</label>
+    <input id="panel-title-input">
+    <label>Description</label>
+    <textarea id="panel-desc"></textarea>
+    <label>Trigger threshold</label>
+    <input type="range" id="panel-threshold" min="0" max="100" value="25">
+    <span id="panel-threshold-val" style="font-size:12px;opacity:0.5;">25</span>
+    <label>Depends on me</label>
+    <div class="rel-list" id="panel-dependents"></div>
+    <label>I depend on</label>
+    <div class="rel-list" id="panel-dependencies"></div>
+    <button onclick="saveNodePanel()" style="width:100%;margin-top:12px;background:#1a3a5c;color:#e6e6e6;border:1px solid #2a5a8c;border-radius:6px;padding:8px;cursor:pointer;">Save</button>
+    <button onclick="closePanel()" style="width:100%;margin-top:4px;background:#1a1d24;color:#e6e6e6;border:1px solid #2a2e36;border-radius:6px;padding:8px;cursor:pointer;">Close</button>
+  </div>
+  <script src="/static/builder.js"></script>
+  <script>init();</script>
+</body>
+</html>
