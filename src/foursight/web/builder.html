@@ -7,36 +7,46 @@
 </head>
 <body>
   <div id="toolbar">
-    <button onclick="addNode('task')">+ Task</button>
-    <button onclick="addNode('leaf')">+ Data Source</button>
+    <button id="btn-task" onclick="startCreate('task')">+ Task</button>
+    <button id="btn-leaf" onclick="startCreate('leaf')">+ Data Source</button>
     <span class="sep"></span>
     <button class="primary" onclick="runBatchAssess()">Run Assessment</button>
     <span class="sep"></span>
-    <button onclick="resetView()">Reset View</button>
+    <button onclick="goUpLayer()" id="btn-up" disabled>Up Layer</button>
+    <span style="font-size:12px;opacity:0.5;margin-left:8px;" id="layer-label">Layer: root</span>
   </div>
-  <div id="breadcrumb"></div>
-  <div id="canvas-wrap">
-    <canvas id="canvas"></canvas>
-  </div>
-  <div id="context-menu">
-    <div class="item" onclick="addDependency()">Add dependency to this node</div>
-    <div class="item" onclick="deleteNode()" style="color:#ff6b6b;">Delete node</div>
-  </div>
-  <div id="node-panel">
-    <h3 id="panel-title">Node</h3>
-    <label>Title</label>
-    <input id="panel-title-input">
-    <label>Description</label>
-    <textarea id="panel-desc"></textarea>
-    <label>Trigger threshold</label>
-    <input type="range" id="panel-threshold" min="0" max="100" value="25">
-    <span id="panel-threshold-val" style="font-size:12px;opacity:0.5;">25</span>
-    <label>Depends on me</label>
-    <div class="rel-list" id="panel-dependents"></div>
-    <label>I depend on</label>
-    <div class="rel-list" id="panel-dependencies"></div>
-    <button onclick="saveNodePanel()" style="width:100%;margin-top:12px;background:#1a3a5c;color:#e6e6e6;border:1px solid #2a5a8c;border-radius:6px;padding:8px;cursor:pointer;">Save</button>
-    <button onclick="closePanel()" style="width:100%;margin-top:4px;background:#1a1d24;color:#e6e6e6;border:1px solid #2a2e36;border-radius:6px;padding:8px;cursor:pointer;">Close</button>
+  <div id="main-area">
+    <svg id="svg-canvas"></svg>
+    <div id="node-panel">
+      <h3 id="panel-title">New Node</h3>
+      <label>Name</label>
+      <input id="panel-name" placeholder="Task name">
+      <label>Kind</label>
+      <select id="panel-kind" onchange="onKindChange()">
+        <option value="task">Task</option>
+        <option value="leaf">Data Source (leaf)</option>
+      </select>
+      <div id="panel-leaf-fields" style="display:none;">
+        <label>Adapter ID</label>
+        <input id="panel-adapter" placeholder="csv">
+        <label>Query</label>
+        <textarea id="panel-query" placeholder="SQL or file path"></textarea>
+      </div>
+      <label>Description</label>
+      <textarea id="panel-desc" placeholder="Describe this task"></textarea>
+      <label>Trigger threshold <span id="panel-threshold-val">25</span></label>
+      <input type="range" id="panel-threshold" min="0" max="100" value="25" oninput="document.getElementById('panel-threshold-val').textContent=this.value">
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button onclick="saveNodePanel()" style="flex:1;background:#1a3a5c;color:#e6e6e6;border:1px solid #2a5a8c;border-radius:6px;padding:8px;cursor:pointer;">Save</button>
+        <button onclick="closePanel()" style="flex:1;background:#1a1d24;color:#e6e6e6;border:1px solid #2a2e36;border-radius:6px;padding:8px;cursor:pointer;">Cancel</button>
+      </div>
+      <div id="panel-relations" style="margin-top:12px;display:none;">
+        <label>Depends on me</label>
+        <div class="rel-list" id="panel-dependents"></div>
+        <label>I depend on</label>
+        <div class="rel-list" id="panel-dependencies"></div>
+      </div>
+    </div>
   </div>
   <script src="/static/builder.js"></script>
   <script>init();</script>
