@@ -66,6 +66,13 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         rep = get_report_fn(node_id, store, Viewer(id="anon", role=Role(role)))
         return rep.model_dump(mode="json") if rep else None
 
+    @app.get("/root")
+    def get_root():
+        for nid in store.all_ids():
+            if not store.parents(nid):
+                return {"node_id": nid}
+        return {"node_id": store.all_ids()[0] if store.all_ids() else ""}
+
     @app.get("/trace/{node_id}")
     def trace(node_id: str):
         t = trace_fn(node_id, store)

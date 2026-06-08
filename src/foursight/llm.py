@@ -27,8 +27,12 @@ class FakeLLM:
 
     def generate_overall(self, node, drivers) -> str:
         sev = node.current.llm_verdict.severity.value if node.current else "unknown"
-        top = drivers[0].line if drivers else "no active drivers"
-        return f"{node.title} is at {sev} risk. Primary driver: {top}."
+        if not drivers:
+            return f"{node.title} is at {sev} risk."
+        first = drivers[0]
+        if first.node_id == node.id:
+            return f"{node.title} is at {sev} risk. {first.line}."
+        return f"{node.title} is at {sev} risk. Primary driver: {first.line}."
 
 
 class DeepSeekLLM:
