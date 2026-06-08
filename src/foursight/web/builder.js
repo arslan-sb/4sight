@@ -469,6 +469,13 @@ function selectNode(nid){
   document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
   document.getElementById("panel-relations").style.display="block";
   document.getElementById("btn-delete").style.display="block";
+  // Enable inject button if node has threshold rules
+  var hasRules=n.data_binding&&n.data_binding.threshold_rules&&n.data_binding.threshold_rules.length>0;
+  if(hasRules||(n.threshold_rules&&n.threshold_rules.length>0)){
+    document.getElementById("btn-inject").disabled=false;
+  }else{
+    document.getElementById("btn-inject").disabled=true;
+  }
   onKindChange();
   fetch("/builder/nodes/"+nid).then(function(r){return r.json();}).then(function(d){
     // "I depend on" = my children (decomp outgoing) + dependency targets (I point dep edges to them)
@@ -481,11 +488,12 @@ function selectNode(nid){
     (d.dependencies||[]).forEach(function(p){depOnMe.push({id:p,type:"dep"});});
 
     var labelFor=function(r){return r.type==="dep"?"[dep] ":"";};
+    var titleFor=function(nid){return (graph.nodes[nid]&&graph.nodes[nid].title)||nid;};
     document.getElementById("panel-dependencies").innerHTML=iDepend.map(function(r){
-      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+esc(titleFor(r.id))+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
     document.getElementById("panel-dependents").innerHTML=depOnMe.map(function(r){
-      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+esc(titleFor(r.id))+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
   }).catch(function(){});
 }
@@ -559,10 +567,36 @@ async function runBatchAssess(){
     return;
   }
   var r=await fetch("/builder/batch-assess",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"full"})});
-  var data=await r.json();
-  data.forEach(function(a){if(graph.nodes[a.node_id]){graph.nodes[a.node_id].severity=a.severity;}});
+  var result=await r.json();
+  var assessments=result.assessments||result;
+  var violations=result.violations||[];
+  if(violations.length>0){
+    console.log("Rule violations:",violations);
+  }
+  assessments.forEach(function(a){if(graph.nodes[a.node_id]){graph.nodes[a.node_id].severity=a.severity;}});
   layoutGraph();
   render();
+}
+
+async function injectProblem(nodeId){
+  if(!nodeId) return;
+  var node=graph.nodes[nodeId];
+  if(!node||!node.threshold_rules||!node.threshold_rules.length){
+    alert("No threshold rules defined for this data source.");
+    return;
+  }
+  var rule=node.threshold_rules[0];
+  var currentVal=node.raw_value!=null?node.raw_value:rule.value;
+  var badVal=parseFloat(prompt(
+    "Inject problem for "+node.title+"\nRule: "+rule.field+" "+rule.operator+" "+rule.value+
+    "\nCurrent value: "+currentVal+"\nEnter value that violates the threshold:",
+    rule.operator==="<"?Math.max(0,rule.value-20):rule.value+20
+  ));
+  if(isNaN(badVal)) return;
+  var r=await fetch("/builder/inject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({node_id:nodeId,raw_value:badVal})});
+  var d=await r.json();
+  node.raw_value=d.raw_value;
+  alert("Injected. "+node.title+" raw_value = "+d.raw_value+"\n(Threshold: "+rule.field+" "+rule.operator+" "+rule.value+")");
 }
 
 function resetView(){ viewX=0;viewY=0;viewScale=1; currentRoot=null; layerStack=[]; selectedNode=null; loadGraph(); }
