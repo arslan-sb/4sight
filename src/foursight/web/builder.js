@@ -8,7 +8,7 @@ var selectedNode=null, currentRoot=null;
 var portDrag=null, portLine=null;
 var creatingKind=null;
 var layerStack=[];
-var NODE_W=180, NODE_H=60, PORT_R=7;
+var NODE_W=150, NODE_H=52, PORT_R=6;
 
 var COLORS={critical:"#dc2626",high:"#ea580c",medium:"#ca8a04",low:"#16a34a",none:"#9ca3af",
   edgeDecomp:"#86a886",edgeDep:"#7b8cc4",bg:"#f8f9fa",text:"#1f2937",textDim:"#6b7280",cardBg:"#ffffff",cardStroke:"#d1d5db"};
@@ -61,9 +61,8 @@ function toSVG(mx,my){
   var pt=svgEl.createSVGPoint();
   pt.x=mx; pt.y=my;
   var ctm=svgEl.getScreenCTM();
-  if(!ctm) return {x:mx+viewX,y:my+viewY};
-  var inv=ctm.inverse();
-  var svgp=pt.matrixTransform(inv);
+  if(!ctm){ return null; }
+  var svgp=pt.matrixTransform(ctm.inverse());
   return {x:svgp.x, y:svgp.y};
 }
 
@@ -96,47 +95,54 @@ async function loadGraph(){
   render();
 }
 
+function getNodeFromEvent(e){
+  var el=e.target.closest('[data-node]');
+  return el?el.getAttribute("data-node"):null;
+}
+
+function isPortTarget(e){
+  return e.target.classList.contains("node-port");
+}
+
 function onMouseDown(e){
   var p=toSVG(e.clientX,e.clientY);
-  var target=e.target;
+  if(!p) return;
 
   // Port drag
-  if(target.classList.contains("node-port")){
-    var nid=target.getAttribute("data-node");
-    portDrag={from:nid, x:p.x, y:p.y};
+  if(isPortTarget(e)){
+    var pid=e.target.getAttribute("data-node");
+    portDrag={from:pid, x:p.x, y:p.y};
     portLine=document.createElementNS("http://www.w3.org/2000/svg","line");
     portLine.setAttribute("x1",p.x); portLine.setAttribute("y1",p.y);
     portLine.setAttribute("x2",p.x); portLine.setAttribute("y2",p.y);
-    portLine.classList.add("edge-line","edge-dragging");
+    portLine.setAttribute("stroke","#1d4ed8"); portLine.setAttribute("stroke-width","2");
+    portLine.setAttribute("stroke-dasharray","4 2");
     svgEl.appendChild(portLine);
     svgEl.classList.add("dragging");
     return;
   }
 
   // Node drag
-  var card=target.closest(".node-card");
-  if(card){
-    var nid=card.getAttribute("data-node");
-    if(nid&&nodePositions[nid]){
-      draggingNode=nid;
-      var np=nodePositions[nid];
-      dragOffX=p.x-np.x; dragOffY=p.y-np.y;
-      selectNode(nid);
-      svgEl.classList.add("dragging");
-      return;
-    }
+  var nid=getNodeFromEvent(e);
+  if(nid&&nodePositions[nid]){
+    draggingNode=nid;
+    var np=nodePositions[nid];
+    dragOffX=p.x-np.x; dragOffY=p.y-np.y;
+    selectNode(nid);
+    svgEl.classList.add("dragging");
+    return;
   }
 
-  // Click on empty space - deselect
   selectNode(null);
 }
 
 function onMouseMove(e){
   var p=toSVG(e.clientX,e.clientY);
+  if(!p) return;
   if(draggingNode){
     nodePositions[draggingNode]={x:p.x-dragOffX, y:p.y-dragOffY};
     render();
-  }else if(portDrag){
+  }else if(portDrag&&portLine){
     portLine.setAttribute("x2",p.x); portLine.setAttribute("y2",p.y);
     var snap=findSnapNode(e.clientX,e.clientY);
     if(snap&&snap!==portDrag.from){
@@ -147,24 +153,22 @@ function onMouseMove(e){
 }
 
 function onMouseUp(e){
-  if(draggingNode){ draggingNode=null; svgEl.classList.remove("dragging"); render(); }
+  if(draggingNode){ draggingNode=null; svgEl.classList.remove("dragging"); }
   if(portDrag){
     var snap=findSnapNode(e.clientX,e.clientY);
     if(snap&&snap!==portDrag.from){
       addDependencyEdge(portDrag.from,snap);
     }
     if(portLine){ portLine.remove(); portLine=null; }
-    portDrag=null; svgEl.classList.remove("dragging");
+    portDrag=null; svgEl.classList.remove("dragging"); render();
   }
 }
 
 function onDblClick(e){
-  var card=e.target.closest(".node-card");
-  if(!card) return;
-  var nid=card.getAttribute("data-node");
+  var nid=getNodeFromEvent(e);
   if(!nid||!graph.nodes[nid]) return;
   var n=graph.nodes[nid];
-  if(n.kind==="task"||(graph.nodes[nid]&&childrenOf(nid).length>0)){
+  if(n.kind==="task"||childrenOf(nid).length>0){
     layerStack.push(nid);
     currentRoot=nid;
     render();
@@ -263,16 +267,20 @@ function render(){
     // Card body
     html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="'+COLORS.cardBg+'" stroke="'+(nid===selectedNode?col:inLayer?COLORS.cardStroke:"#e5e7eb")+'" stroke-width="'+(nid===selectedNode?2:1)+'"/>';
     // Left accent bar
-    html+='<rect x="0" y="4" width="4" height="'+(NODE_H-8)+'" rx="2" fill="'+col+'"/>';
-    // Severity dot
-    if(n.severity||!inLayer) html+='<circle cx="18" cy="18" r="5" fill="'+col+'"/>';
-    // Title
-    var title=(n.title||nid); if(title.length>20) title=title.slice(0,18)+"..";
-    html+='<text x="30" y="22" fill="'+(inLayer?COLORS.text:"#9ca3af")+'" font-size="13" font-family="system-ui" font-weight="600">'+esc(title)+'</text>';
-    // Kind badge
-    html+='<text x="30" y="40" fill="'+(inLayer?COLORS.textDim:"#c7cbd3")+'" font-size="11" font-family="system-ui">'+(n.kind||"task")+'</text>';
-    // Severity badge
-    if(n.severity) html+='<text x="'+(NODE_W-12)+'" y="22" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui">'+n.severity.toUpperCase()+'</text>';
+    html+='<rect x="0" y="6" width="3" height="'+(NODE_H-12)+'" rx="1.5" fill="'+col+'"/>';
+    // Title (truncated with ellipsis for the narrower card)
+    var title=(n.title||nid);
+    var maxChars=Math.floor((NODE_W-50)/7); // ~14 chars for 150px card
+    if(title.length>maxChars) title=title.slice(0,maxChars-2)+"…";
+    html+='<text x="28" y="21" fill="'+(inLayer?COLORS.text:"#9ca3af")+'" font-size="12" font-family="system-ui" font-weight="600" style="user-select:none;pointer-events:none;">'+esc(title)+'</text>';
+    // Kind badge + severity on same line
+    var badge=(n.kind||"task");
+    if(n.severity){
+      html+='<text x="28" y="38" fill="'+COLORS.textDim+'" font-size="10" font-family="system-ui" style="user-select:none;pointer-events:none;">'+badge+'</text>';
+      html+='<text x="'+(NODE_W-10)+'" y="38" fill="'+col+'" font-size="10" font-weight="bold" text-anchor="end" font-family="system-ui" style="user-select:none;pointer-events:none;">'+n.severity.toUpperCase()+'</text>';
+    }else{
+      html+='<text x="28" y="38" fill="'+COLORS.textDim+'" font-size="10" font-family="system-ui" style="user-select:none;pointer-events:none;">'+badge+'</text>';
+    }
     // Ports only for active layer
     if(inLayer){
       html+='<circle class="node-port" data-node="'+nid+'" cx="'+NODE_W+'" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="'+col+'" stroke="'+col+'" stroke-width="1.5"/>';

@@ -8,7 +8,8 @@ body { font-family: system-ui, sans-serif; background:#f3f4f6; color:#1f2937; ov
 #toolbar button.primary:hover { background:#1e40af; }
 #toolbar .sep { width:1px; height:24px; background:#e5e7eb; margin:0 4px; }
 #main-area { position:absolute; top:48px; left:0; right:0; bottom:0; display:flex; }
-#svg-canvas { flex:1; cursor:default; background:#f8f9fa; }
+#svg-canvas { flex:1; cursor:default; background:#f8f9fa; user-select:none; -webkit-user-select:none; }
+#svg-canvas text { user-select:none; -webkit-user-select:none; cursor:inherit; }
 #svg-canvas.dragging { cursor:grabbing; }
 #node-panel { width:300px; min-width:300px; background:#ffffff; border-left:1px solid #e5e7eb; padding:16px; overflow-y:auto; }
 #node-panel h3 { margin-bottom:12px; color:#1f2937; }
