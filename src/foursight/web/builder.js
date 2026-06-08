@@ -306,12 +306,21 @@ function render(){
     var sw=isDep?1.5:2;
     var dash=isDep?"6 3":"none";
 
-    // Start: bottom-center of source. End: top-center of target.
-    var x1=from.x+NODE_W/2, y1=from.y+NODE_H;
-    var x2=to.x+NODE_W/2, y2=to.y;
+    // For decomposition: influence flows child→parent (upward), draw child bottom to parent top
+    // For dependency: influence flows src→dst, draw src bottom/right to dst top/left
+    var x1, y1, x2, y2;
+    if(!isDep){
+      // Decomposition: child (dst) influences parent (src). Arrow goes upward.
+      x1=to.x+NODE_W/2; y1=to.y+NODE_H;   // child bottom-center
+      x2=from.x+NODE_W/2; y2=from.y;       // parent top-center
+    }else{
+      // Dependency: src influences dst. Arrow goes from src to dst.
+      x1=from.x+NODE_W/2; y1=from.y+NODE_H/2; // src right-center
+      x2=to.x; y2=to.y+NODE_H/2;              // dst left-center
+    }
 
     // Cubic bezier with control points offset vertically
-    var dy=Math.max(Math.abs(y2-y1)/3, 30);
+    var dy=Math.max(Math.abs(y2-y1)/3, 20);
     var d="M"+x1+" "+y1+" C"+x1+" "+(y1+dy)+" "+x2+" "+(y2-dy)+" "+x2+" "+y2;
     html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+sw+'" stroke-dasharray="'+dash+'" opacity="'+edgeOpacity+'"/>';
 
@@ -450,19 +459,21 @@ function selectNode(nid){
   document.getElementById("btn-delete").style.display="block";
   onKindChange();
   fetch("/builder/nodes/"+nid).then(function(r){return r.json();}).then(function(d){
-    var depOnMe=[];
-    (d.children||[]).forEach(function(c){depOnMe.push({id:c,type:"decomp"});});
-    (d.dependents||[]).forEach(function(c){depOnMe.push({id:c,type:"dep"});});
+    // "I depend on" = my children (decomp outgoing) + dependency targets (I point dep edges to them)
     var iDepend=[];
-    (d.parents||[]).forEach(function(p){iDepend.push({id:p,type:"decomp"});});
-    (d.dependencies||[]).forEach(function(p){iDepend.push({id:p,type:"dep"});});
-    document.getElementById("panel-dependents").innerHTML=depOnMe.map(function(r){
-      var label=r.type==="decomp"?"[decomp] ":"[dep] ";
-      return "<div class='rel-item' style='cursor:pointer;' onclick='selectNode(\""+r.id+"\")'>"+label+r.id+"</div>";
-    }).join("")||"<span style='opacity:0.4;'>none</span>";
+    (d.children||[]).forEach(function(c){iDepend.push({id:c,type:"decomp"});});
+    (d.dependents||[]).forEach(function(c){iDepend.push({id:c,type:"dep"});});
+    // "Depends on me" = my parents (decomp incoming) + dependency sources (they point dep edges to me)
+    var depOnMe=[];
+    (d.parents||[]).forEach(function(p){depOnMe.push({id:p,type:"decomp"});});
+    (d.dependencies||[]).forEach(function(p){depOnMe.push({id:p,type:"dep"});});
+
+    var labelFor=function(r){return r.type==="dep"?"[dep] ":"";};
     document.getElementById("panel-dependencies").innerHTML=iDepend.map(function(r){
-      var label=r.type==="decomp"?"[decomp] ":"[dep] ";
-      return "<div class='rel-item' style='cursor:pointer;' onclick='selectNode(\""+r.id+"\")'>"+label+r.id+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='selectNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
+    }).join("")||"<span style='opacity:0.4;'>none</span>";
+    document.getElementById("panel-dependents").innerHTML=depOnMe.map(function(r){
+      return "<div class='rel-item' style='cursor:pointer;' onclick='selectNode(\""+r.id+"\")'>"+labelFor(r)+r.id+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
   }).catch(function(){});
 }
