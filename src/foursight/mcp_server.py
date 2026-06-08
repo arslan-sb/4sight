@@ -9,7 +9,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def build_mcp(store, engine, get_report: Callable, trace: Callable, name: str = "4sight") -> FastMCP:
+def build_mcp(store, engine, get_report: Callable, trace: Callable, name: str = "4sight",
+              flatten=None, llm=None) -> FastMCP:
     mcp = FastMCP(name)
 
     @mcp.tool
@@ -102,6 +103,26 @@ def build_mcp(store, engine, get_report: Callable, trace: Callable, name: str = 
         except KeyError:
             return {"changed": []}
         return {"changed": changed}
+
+    @mcp.tool
+    def batch_assess(mode: str = "full") -> list[dict]:
+        """Assess every node in the graph in a single LLM call.
+
+        Flattens the graph in topological order, sends all nodes to the LLM
+        as a batch, and returns an assessment for every node. mode='full'
+        sends the entire graph. mode='delta' sends only nodes with non-zero
+        delta_accumulator.
+        """
+        if flatten is None or llm is None:
+            return []
+        system, messages = flatten.build_batch_prompt(mode=mode)
+        raw = llm.batch_assess(system, messages[0]["content"])
+        assessments = flatten.parse_batch_response(raw)
+        for a in assessments:
+            node = store.get_node(a["node_id"])
+            node.current = a
+            node.delta_accumulator = 0.0
+        return assessments
 
     return mcp
 
