@@ -29,6 +29,8 @@ class FakeStore:
             "comp_pool": _report("comp_pool", Severity.LOW, "Compensation pool stable.", []),
         }
         self._origin = None
+        self._edges = []
+        self._infl = type("_Dummy", (), {"remove_node": lambda s, n: None, "has_edge": lambda s, u, v: False})()
 
     def get_node(self, nid):
         return self.nodes[nid]
@@ -53,6 +55,18 @@ class FakeStore:
 
     def topo_order(self, subset):
         return sorted(subset)
+
+    def find_duplicate_source(self, binding):
+        return None
+
+    def add_edge(self, src, dst, etype):
+        from .models import Edge
+        self._edges.append(Edge(src=src, dst=dst, type=etype))
+        if etype.value == "decomposition":
+            if src not in self._children:
+                self._children[src] = []
+            self._children[src].append(dst)
+
 
     def report(self, nid):
         return self._reports.get(nid)

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from .models import ChangeEvent, Sensitivity, Viewer, Role
+from .models import ChangeEvent, Sensitivity, Viewer, Role, Node, NodeKind, EdgeType
 
 WEB = Path(__file__).parent / "web"
 
@@ -156,5 +156,93 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
                 await socket.receive_text()
         except WebSocketDisconnect:
             app.state.sockets.remove(socket)
+
+    # --- Graph Builder endpoints ---
+
+    @app.get("/builder/nodes/{node_id}")
+    def get_builder_node(node_id: str):
+        if node_id not in store.nodes:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "not found"})
+        node = store.get_node(node_id)
+        return {
+            "id": node.id, "kind": node.kind.value, "title": node.title,
+            "description": node.description,
+            "trigger_threshold": node.trigger_threshold,
+            "delta_accumulator": node.delta_accumulator,
+            "children": store.children(node_id),
+            "parents": store.parents(node_id),
+            "dependencies": store.dependencies(node_id),
+            "dependents": store.dependents(node_id),
+            "severity": node.current.llm_verdict.severity.value if node.current else None,
+        }
+
+    @app.post("/builder/nodes")
+    def create_node(body: dict):
+        from .models import DataBinding, Sensitivity
+        nid = body.get("id", body.get("title", "untitled"))
+        kind = NodeKind(body.get("kind", "task"))
+        binding = None
+        if kind == NodeKind.LEAF:
+            adapter_id = body.get("adapter_id", "")
+            query = body.get("query", "")
+            binding = DataBinding(adapter_id=adapter_id, query=query,
+                                  sensitivity=Sensitivity.INTERNAL)
+            existing = store.find_duplicate_source(binding)
+            if existing:
+                return {"id": existing, "deduped": True}
+        node = Node(id=nid, kind=kind, title=body.get("title", nid),
+                    description=body.get("description", ""),
+                    trigger_threshold=float(body.get("trigger_threshold", 25.0)),
+                    data_binding=binding)
+        store.add_node(node)
+        return {"id": nid, "deduped": False}
+
+    @app.delete("/builder/nodes/{node_id}")
+    def delete_node(node_id: str):
+        if node_id in store.nodes:
+            store._edges = [e for e in store._edges
+                           if e.src != node_id and e.dst != node_id]
+            store._infl.remove_node(node_id)
+            del store.nodes[node_id]
+        return {"deleted": node_id}
+
+    @app.post("/builder/edges")
+    def create_edge(body: dict):
+        try:
+            store.add_edge(body["src"], body["dst"], EdgeType(body["type"]))
+            return {"src": body["src"], "dst": body["dst"], "type": body["type"]}
+        except ValueError as exc:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    @app.delete("/builder/edges")
+    def delete_edge(body: dict):
+        etype = EdgeType(body["type"])
+        store._edges = [e for e in store._edges
+                        if not (e.src == body["src"] and e.dst == body["dst"] and e.type == etype)]
+        if etype == EdgeType.DECOMPOSITION:
+            u, v = body["dst"], body["src"]
+        else:
+            u, v = body["src"], body["dst"]
+        if store._infl.has_edge(u, v):
+            store._infl.remove_edge(u, v)
+        return {"deleted": True}
+
+    @app.get("/builder/graph")
+    def get_builder_graph():
+        nodes = []
+        for nid in store.all_ids():
+            n = store.get_node(nid)
+            nodes.append({
+                "id": nid, "kind": n.kind.value, "title": n.title,
+                "description": n.description,
+                "severity": n.current.llm_verdict.severity.value if n.current else None,
+                "trigger_threshold": n.trigger_threshold,
+                "delta_accumulator": n.delta_accumulator,
+            })
+        edges = [{"src": e.src, "dst": e.dst, "type": e.type.value}
+                 for e in store._edges]
+        return {"nodes": nodes, "edges": edges}
 
     return app
