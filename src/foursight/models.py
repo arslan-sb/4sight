@@ -127,6 +127,9 @@ class Node(BaseModel):
     raw: Any = None
     pending_change: Optional[ChangeEvent] = None
     pending_delta: float = 0.0
+    description: str = ""
+    trigger_threshold: float = 25.0
+    delta_accumulator: float = 0.0
 
 
 class Edge(BaseModel):
