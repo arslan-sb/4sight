@@ -55,6 +55,8 @@ class DataBinding(BaseModel):
     query: str = ""
     sensitivity: Sensitivity = Sensitivity.INTERNAL
     min_disclosure: Sensitivity = Sensitivity.INTERNAL
+    threshold_rules: list[dict] = Field(default_factory=list)
+    raw_value: float | None = None
 
 
 class ChangeEvent(BaseModel):

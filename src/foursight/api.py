@@ -52,12 +52,46 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
         from .flatten import FlattenEngine
         from .llm import DeepSeekLLM, FakeLLM
         mode = body.get("mode", "full")
+
+        # Rule-based pre-check: evaluate threshold_rules on leaf data sources
+        violations = []
+        for nid in store.all_ids():
+            node = store.get_node(nid)
+            if node.data_binding and node.data_binding.threshold_rules:
+                for rule in node.data_binding.threshold_rules:
+                    raw_val = node.data_binding.raw_value
+                    if raw_val is None:
+                        continue
+                    field = rule.get("field", "")
+                    op = rule.get("operator", "<")
+                    threshold = float(rule.get("value", 0))
+                    if op == "<" and raw_val < threshold:
+                        violations.append(
+                            f"VIOLATION: {node.title} ({field}={raw_val}) "
+                            f"is below threshold {threshold}"
+                        )
+                    elif op == ">" and raw_val > threshold:
+                        violations.append(
+                            f"VIOLATION: {node.title} ({field}={raw_val}) "
+                            f"exceeds threshold {threshold}"
+                        )
+
         flatten = FlattenEngine(store)
         try:
             llm = DeepSeekLLM()
         except Exception:
             llm = FakeLLM()
         system, messages = flatten.build_batch_prompt(mode=mode)
+
+        # Inject violations into the prompt
+        if violations:
+            violation_text = "\n".join(violations)
+            messages[0]["content"] = (
+                "The following rule-based threshold violations were detected "
+                "before assessment. Factor these into your risk scoring.\n\n"
+                + violation_text + "\n\n" + messages[0]["content"]
+            )
+
         try:
             raw = llm.batch_assess(system, messages[0]["content"])
             assessments = flatten.parse_batch_response(raw)
@@ -68,7 +102,19 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
             node = store.get_node(a["node_id"])
             node.current = a
             node.delta_accumulator = 0.0
-        return assessments
+        return {"assessments": assessments, "violations": violations}
+
+    @app.post("/builder/inject")
+    def builder_inject(body: dict):
+        """Set a data source's raw value to simulate a problem."""
+        node_id = body.get("node_id", "")
+        raw_value = body.get("raw_value")
+        if node_id not in store.nodes:
+            return {"error": "node not found"}
+        node = store.get_node(node_id)
+        if node.data_binding:
+            node.data_binding.raw_value = float(raw_value) if raw_value is not None else None
+        return {"node_id": node_id, "raw_value": raw_value}
 
     @app.get("/raw", response_class=HTMLResponse)
     def raw_graph():
@@ -203,6 +249,8 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
             "dependencies": store.dependencies(node_id),
             "dependents": store.dependents(node_id),
             "severity": node.current.llm_verdict.severity.value if node.current else None,
+            "threshold_rules": node.data_binding.threshold_rules if node.data_binding else [],
+            "raw_value": node.data_binding.raw_value if node.data_binding else None,
         }
 
     @app.post("/builder/nodes")
@@ -268,6 +316,8 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
                 "severity": n.current.llm_verdict.severity.value if n.current else None,
                 "trigger_threshold": n.trigger_threshold,
                 "delta_accumulator": n.delta_accumulator,
+                "threshold_rules": n.data_binding.threshold_rules if n.data_binding else [],
+                "raw_value": n.data_binding.raw_value if n.data_binding else None,
             })
         edges = [{"src": e.src, "dst": e.dst, "type": e.type.value}
                  for e in store._edges]
