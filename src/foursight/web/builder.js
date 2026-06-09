@@ -241,13 +241,13 @@ function render(){
     var active=anySelected?(highlight[e.src]&&highlight[e.dst]):true;
     var strokeCol=active?COLORS.edge:"#d1d5db";
     var opacity=active?1:0.15;
-    var x1=from.x+NODE_W/2,y1=from.y; // source top-center (exit, lower node)
-    var x2=to.x+NODE_W/2,y2=to.y+NODE_H; // target bottom-center (enter, upper node)
+    var x1=from.x+NODE_W/2,y1=from.y+NODE_H; // source bottom (exit)
+    var x2=to.x+NODE_W/2,y2=to.y;             // target top (enter)
     var dy=Math.max(Math.abs(y2-y1)/3,20);
     var d="M"+x1+" "+y1+" C"+x1+" "+(y1-dy)+" "+x2+" "+(y2+dy)+" "+x2+" "+y2;
     html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="2" opacity="'+opacity+'"/>';
     if(active){
-      var ang=Math.atan2(y1-y2,x1-x2),s=5;
+      var ang=Math.atan2(y2-y1,x2-x1),s=8;
       var mx=(x1+x2)/2,my=(y1+y2)/2;
       var pts=(mx-s*Math.cos(ang-0.5))+","+(my-s*Math.sin(ang-0.5))+" "+(mx-s*Math.cos(ang+0.5))+","+(my-s*Math.sin(ang+0.5))+" "+mx+","+my;
       html+='<polygon points="'+pts+'" fill="'+strokeCol+'"/>';
@@ -366,11 +366,12 @@ function selectNode(nid){
     document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
     hasRules=n.threshold_rules&&n.threshold_rules.length>0;
     document.getElementById("btn-inject").disabled=!hasRules;
+    var seenI={}, seenD={};
     var iDepend=[], depOnMe=[];
-    (d.children||[]).forEach(function(c){iDepend.push({id:c});});
-    (d.dependents||[]).forEach(function(c){iDepend.push({id:c});});
-    (d.parents||[]).forEach(function(p){depOnMe.push({id:p});});
-    (d.dependencies||[]).forEach(function(p){depOnMe.push({id:p});});
+    (d.children||[]).forEach(function(c){if(!seenI[c]){seenI[c]=true;iDepend.push({id:c});}});
+    (d.dependents||[]).forEach(function(c){if(!seenI[c]){seenI[c]=true;iDepend.push({id:c});}});
+    (d.parents||[]).forEach(function(p){if(!seenD[p]){seenD[p]=true;depOnMe.push({id:p});}});
+    (d.dependencies||[]).forEach(function(p){if(!seenD[p]){seenD[p]=true;depOnMe.push({id:p});}});
     var titleFor=function(nid){return (graph.nodes[nid]&&graph.nodes[nid].title)||nid;};
     document.getElementById("panel-dependencies").innerHTML=iDepend.map(function(r){
       return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+esc(titleFor(r.id))+"</div>";
