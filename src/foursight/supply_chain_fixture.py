@@ -26,7 +26,7 @@ def parse_supply_chain(path: str | Path = FIXTURES) -> SupplyChainSpec:
                                   sensitivity=Sensitivity(n.get("sensitivity", "internal")))
         nodes.append(Node(id=n["id"], kind=kind, title=n["title"],
                           data_binding=binding, raw={} if kind == NodeKind.LEAF else None))
-    edges = [(e["src"], e["dst"], EdgeType(e["type"])) for e in data["edges"]]
+    edges = [(e["src"], e["dst"], EdgeType(e.get("type", "dependency"))) for e in data["edges"]]
     docs = []
     pol = path / "policies"
     if pol.exists():

@@ -6,6 +6,7 @@ Requires-Dist: pydantic>=2.6
 Requires-Dist: networkx>=3.2
 Requires-Dist: chromadb>=0.5
 Requires-Dist: openai>=1.30
+Requires-Dist: anthropic>=0.40
 Requires-Dist: fastapi>=0.110
 Requires-Dist: uvicorn>=0.29
 Requires-Dist: fastmcp>=2.0
