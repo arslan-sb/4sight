@@ -1,28 +1,24 @@
 var graph = {nodes:{}, edges:[]};
 var nodePositions = {};
-var svg, svgEl;
+var svgEl;
 var viewX=0, viewY=0, viewW=1200, viewH=800, viewScale=1;
 var draggingNode=null, dragOffX=0, dragOffY=0;
-var panning=false, panStart={x:0,y:0}, panView={x:0,y:0};
-var selectedNode=null, currentRoot=null;
+var selectedNode=null;
 var portDrag=null, portLine=null;
 var creatingKind=null;
-var layerStack=[];
 var NODE_W=150, NODE_H=52, PORT_R=6;
 
 var COLORS={critical:"#dc2626",high:"#ea580c",medium:"#ca8a04",low:"#16a34a",none:"#9ca3af",
-  edgeDecomp:"#22c55e",edgeDep:"#3b82f6",bg:"#f8f9fa",text:"#1f2937",textDim:"#6b7280",cardBg:"#ffffff",cardStroke:"#d1d5db"};
+  edge:"#3b82f6",bg:"#f8f9fa",text:"#1f2937",textDim:"#6b7280",cardBg:"#ffffff",cardStroke:"#d1d5db"};
 
 function sevColor(s){return COLORS[s]||COLORS.none;}
 
 function init(){
   svgEl=document.getElementById("svg-canvas");
-  svg=svgEl;
   svgEl.addEventListener("wheel",onWheel,{passive:false});
   svgEl.addEventListener("mousedown",onMouseDown);
   svgEl.addEventListener("mousemove",onMouseMove);
   svgEl.addEventListener("mouseup",onMouseUp);
-  svgEl.addEventListener("dblclick",onDblClick);
   svgEl.addEventListener("contextmenu",onContextMenu);
   window.addEventListener("resize",resizeSVG);
   resizeSVG();
@@ -31,90 +27,9 @@ function init(){
 
 function resizeSVG(){
   var rect=svgEl.parentElement.getBoundingClientRect();
-  viewW=Math.max(rect.width, 600); viewH=Math.max(rect.height, 400);
+  viewW=Math.max(rect.width,600); viewH=Math.max(rect.height,400);
   updateViewBox();
 }
-
-function layoutGraph(){
-  // Compute decomposition layers (topological sort by decomposition edges)
-  var decompLayers={};
-  var allNids=Object.keys(graph.nodes);
-  if(allNids.length===0) return;
-
-  // Find roots: nodes with no decomposition parent
-  allNids.forEach(function(nid){
-    var hasParent=false;
-    (graph.edges||[]).forEach(function(e){
-      if(e.dst===nid&&e.type==="decomposition") hasParent=true;
-    });
-    if(!hasParent) decompLayers[nid]=0;
-  });
-  // If no roots found, pick first node as root
-  if(Object.keys(decompLayers).length===0){
-    decompLayers[allNids[0]]=0;
-  }
-
-  // BFS: assign layers = max(parent layer) + 1
-  var changed=true;
-  while(changed){
-    changed=false;
-    allNids.forEach(function(nid){
-      if(decompLayers[nid]!==undefined) return;
-      var maxParent=-1;
-      var allAssigned=true;
-      (graph.edges||[]).forEach(function(e){
-        if(e.dst===nid&&e.type==="decomposition"){
-          if(decompLayers[e.src]===undefined) allAssigned=false;
-          else maxParent=Math.max(maxParent, decompLayers[e.src]);
-        }
-      });
-      if(allAssigned&&maxParent>=0){
-        decompLayers[nid]=maxParent+1;
-        changed=true;
-      }
-    });
-  }
-  // Assign layer 0 to any remaining unassigned
-  allNids.forEach(function(nid){
-    if(decompLayers[nid]===undefined) decompLayers[nid]=0;
-  });
-
-  // Group by layer
-  var layerGroups={};
-  allNids.forEach(function(nid){
-    var l=decompLayers[nid];
-    if(!layerGroups[l]) layerGroups[l]=[];
-    layerGroups[l].push(nid);
-  });
-
-  // Position nodes: each layer is a row, nodes spread horizontally
-  var layerKeys=Object.keys(layerGroups).map(Number).sort(function(a,b){return a-b;});
-  var layerSpacing=120;
-  var nodeSpacing=200;
-  var startY=80;
-  layerKeys.forEach(function(l){
-    var nodes=layerGroups[l];
-    var totalWidth=Math.max(nodes.length*nodeSpacing, 200);
-    var startX=Math.max(60, (viewW-totalWidth)/2);
-    nodes.forEach(function(nid,i){
-      nodePositions[nid]={x:startX+i*nodeSpacing, y:startY+l*layerSpacing};
-    });
-  });
-
-  // Fit view to contain all positioned nodes
-  var maxX=0, maxY=0;
-  allNids.forEach(function(nid){
-    var p=nodePositions[nid];
-    if(!p) return;
-    maxX=Math.max(maxX, p.x+NODE_W);
-    maxY=Math.max(maxY, p.y+NODE_H);
-  });
-  viewW=Math.max(maxX+120, 600);
-  viewH=Math.max(maxY+120, 400);
-  viewX=-60; viewY=-20;
-  updateViewBox();
-}
-
 function updateViewBox(){
   svgEl.setAttribute("viewBox",viewX+" "+viewY+" "+viewW+" "+viewH);
   svgEl.setAttribute("width","100%"); svgEl.setAttribute("height","100%");
@@ -122,10 +37,9 @@ function updateViewBox(){
 }
 
 function toSVG(mx,my){
-  var pt=svgEl.createSVGPoint();
-  pt.x=mx; pt.y=my;
+  var pt=svgEl.createSVGPoint(); pt.x=mx; pt.y=my;
   var ctm=svgEl.getScreenCTM();
-  if(!ctm){ return null; }
+  if(!ctm) return null;
   var svgp=pt.matrixTransform(ctm.inverse());
   return {x:svgp.x, y:svgp.y};
 }
@@ -133,7 +47,7 @@ function toSVG(mx,my){
 function onWheel(e){
   e.preventDefault();
   if(e.ctrlKey||e.metaKey){
-    var p=toSVG(e.clientX,e.clientY);
+    var p=toSVG(e.clientX,e.clientY); if(!p) return;
     var ds=e.deltaY>0?0.9:1.1;
     var newScale=Math.max(0.3,Math.min(3,viewScale*ds));
     var cx=viewX+viewW/2, cy=viewY+viewH/2;
@@ -148,109 +62,130 @@ async function loadGraph(){
   var r=await fetch("/builder/graph"); var d=await r.json();
   d.nodes.forEach(function(n){graph.nodes[n.id]=n;});
   graph.edges=d.edges;
-  Object.keys(graph.nodes).forEach(function(nid,i){
-    if(!nodePositions[nid]) nodePositions[nid]={x:100+(i%4)*250, y:100+Math.floor(i/4)*150};
-  });
-  if(!currentRoot){
-    var rr=await fetch("/root"); currentRoot=(await rr.json()).node_id;
-    layerStack=[currentRoot];
+  if(Object.keys(nodePositions).length===0){
+    layoutGraph();
   }
-  layoutGraph();
   render();
 }
 
-function getNodeFromEvent(e){
-  var el=e.target.closest('[data-node]');
-  return el?el.getAttribute("data-node"):null;
+// --- Topological layout ---
+function layoutGraph(){
+  var allNids=Object.keys(graph.nodes);
+  if(allNids.length===0) return;
+
+  // Assign layers via reverse BFS: sinks (root) at top, sources (leaves) at bottom
+  var layers={};
+  allNids.forEach(function(nid){
+    var hasOutgoing=(graph.edges||[]).some(function(e){return e.src===nid;});
+    if(!hasOutgoing) layers[nid]=0; // sinks = layer 0 (top)
+  });
+  if(Object.keys(layers).length===0) layers[allNids[0]]=0;
+
+  var changed=true;
+  while(changed){ changed=false;
+    allNids.forEach(function(nid){
+      if(layers[nid]!==undefined) return;
+      var maxSrc=-1, allDone=true;
+      (graph.edges||[]).forEach(function(e){
+        if(e.src===nid && layers[e.dst]!==undefined){
+          maxSrc=Math.max(maxSrc,layers[e.dst]);
+        }else if(e.src===nid && layers[e.dst]===undefined){
+          allDone=false;
+        }
+      });
+      if(allDone&&maxSrc>=0){layers[nid]=maxSrc+1;changed=true;}
+    });
+  }
+  allNids.forEach(function(nid){if(layers[nid]===undefined) layers[nid]=0;});
+
+  var layerGroups={};
+  allNids.forEach(function(nid){
+    var l=layers[nid];
+    if(!layerGroups[l]) layerGroups[l]=[];
+    layerGroups[l].push(nid);
+  });
+
+  var keys=Object.keys(layerGroups).map(Number).sort(function(a,b){return a-b;});
+  var spacing=200, rowH=120, startY=80;
+  keys.forEach(function(l){
+    var nodes=layerGroups[l];
+    var totalW=nodes.length*spacing;
+    var startX=Math.max(60,(600-totalW)/2);
+    nodes.forEach(function(nid,i){
+      nodePositions[nid]={x:startX+i*spacing, y:startY+l*rowH};
+    });
+  });
+
+  var maxX=0,maxY=0;
+  allNids.forEach(function(nid){
+    var p=nodePositions[nid]; if(!p) return;
+    maxX=Math.max(maxX,p.x+NODE_W); maxY=Math.max(maxY,p.y+NODE_H);
+  });
+  viewW=Math.max(maxX+120,600); viewH=Math.max(maxY+120,400);
+  viewX=-60; viewY=-20;
+  updateViewBox();
 }
 
-function isPortTarget(e){
-  return e.target.classList.contains("node-port");
-}
+// --- Event handlers ---
+function getNodeFromEvent(e){var el=e.target.closest('[data-node]');return el?el.getAttribute("data-node"):null;}
 
 function onMouseDown(e){
-  var p=toSVG(e.clientX,e.clientY);
-  if(!p) return;
-
-  // Port drag
-  if(isPortTarget(e)){
-    var pid=e.target.getAttribute("data-node");
-    portDrag={from:pid, x:p.x, y:p.y};
+  var p=toSVG(e.clientX,e.clientY); if(!p) return;
+  if(e.target.classList.contains("node-port")){
+    portDrag={from:e.target.getAttribute("data-node"),x:p.x,y:p.y};
     portLine=document.createElementNS("http://www.w3.org/2000/svg","line");
-    portLine.setAttribute("x1",p.x); portLine.setAttribute("y1",p.y);
-    portLine.setAttribute("x2",p.x); portLine.setAttribute("y2",p.y);
-    portLine.setAttribute("stroke","#1d4ed8"); portLine.setAttribute("stroke-width","2");
+    portLine.setAttribute("x1",p.x);portLine.setAttribute("y1",p.y);
+    portLine.setAttribute("x2",p.x);portLine.setAttribute("y2",p.y);
+    portLine.setAttribute("stroke","#1d4ed8");portLine.setAttribute("stroke-width","2");
     portLine.setAttribute("stroke-dasharray","4 2");
-    svgEl.appendChild(portLine);
-    svgEl.classList.add("dragging");
-    return;
+    svgEl.appendChild(portLine); svgEl.classList.add("dragging"); return;
   }
-
-  // Node drag
   var nid=getNodeFromEvent(e);
   if(nid&&nodePositions[nid]){
-    draggingNode=nid;
-    var np=nodePositions[nid];
+    draggingNode=nid; var np=nodePositions[nid];
     dragOffX=p.x-np.x; dragOffY=p.y-np.y;
-    selectNode(nid);
-    svgEl.classList.add("dragging");
-    return;
+    selectNode(nid); svgEl.classList.add("dragging"); return;
   }
-
   selectNode(null);
 }
 
 function onMouseMove(e){
-  var p=toSVG(e.clientX,e.clientY);
-  if(!p) return;
+  var p=toSVG(e.clientX,e.clientY); if(!p) return;
   if(draggingNode){
-    nodePositions[draggingNode]={x:p.x-dragOffX, y:p.y-dragOffY};
-    render();
+    nodePositions[draggingNode]={x:p.x-dragOffX,y:p.y-dragOffY}; render();
   }else if(portDrag&&portLine){
-    portLine.setAttribute("x2",p.x); portLine.setAttribute("y2",p.y);
+    portLine.setAttribute("x2",p.x);portLine.setAttribute("y2",p.y);
     var snap=findSnapNode(e.clientX,e.clientY);
     if(snap&&snap!==portDrag.from){
       var np=nodePositions[snap]; if(!np) return;
-      portLine.setAttribute("x2",np.x+NODE_W/2); portLine.setAttribute("y2",np.y+NODE_H/2);
+      portLine.setAttribute("x2",np.x+NODE_W/2);portLine.setAttribute("y2",np.y+NODE_H/2);
     }
   }
 }
 
 function onMouseUp(e){
-  if(draggingNode){ draggingNode=null; svgEl.classList.remove("dragging"); }
+  if(draggingNode){draggingNode=null;svgEl.classList.remove("dragging");}
   if(portDrag){
     var snap=findSnapNode(e.clientX,e.clientY);
-    if(snap&&snap!==portDrag.from){
-      addDecompEdge(portDrag.from,snap);
-    }
-    if(portLine){ portLine.remove(); portLine=null; }
-    portDrag=null; svgEl.classList.remove("dragging"); render();
+    if(snap&&snap!==portDrag.from) addEdge(portDrag.from,snap);
+    if(portLine){portLine.remove();portLine=null;}
+    portDrag=null;svgEl.classList.remove("dragging");render();
   }
 }
 
 var contextNodeId=null;
-
 function onContextMenu(e){
-  e.preventDefault();
-  var nid=getNodeFromEvent(e);
-  if(!nid) return;
+  e.preventDefault(); var nid=getNodeFromEvent(e); if(!nid) return;
   contextNodeId=nid;
   var menu=document.createElement("div");
-  menu.style.cssText="position:fixed;background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:4px 0;z-index:300;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,0.15);";
-  menu.style.left=e.clientX+"px"; menu.style.top=e.clientY+"px";
+  menu.style.cssText="position:fixed;background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:4px 0;z-index:300;min-width:200px;box-shadow:0 4px 12px rgba(0,0,0,0.15);";
+  menu.style.left=e.clientX+"px";menu.style.top=e.clientY+"px";
   menu.innerHTML=
-    '<div style="padding:8px 16px;cursor:pointer;font-size:13px;" onmouseover="this.style.background=\"#f3f4f6\"" onmouseout="this.style.background=\"\"">'+nid+'</div>'+
-    '<div style="padding:8px 16px;cursor:pointer;font-size:13px;color:#3b82f6;" onmouseover="this.style.background=\"#f3f4f6\"" onmouseout="this.style.background=\"\"">Add dependency edge from...</div>';
+    '<div style="padding:8px 16px;cursor:pointer;font-size:13px;">'+nid+'</div>'+
+    '<div style="padding:8px 16px;cursor:pointer;font-size:13px;color:#3b82f6;">Add edge from...</div>';
   menu.children[1].onclick=function(){
-    var target=prompt("Create dependency edge FROM node (ID):");
-    if(target&&graph.nodes[target]&&target!==nid){
-      var exists=graph.edges.some(function(e){return e.src===target&&e.dst===nid&&e.type==="dependency";});
-      if(!exists){
-        graph.edges.push({src:target,dst:nid,type:"dependency"});
-        fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:target,dst:nid,type:"dependency"})});
-        render();
-      }
-    }
+    var target=prompt("Create edge FROM node (ID):");
+    if(target&&graph.nodes[target]&&target!==nid) addEdge(target,nid);
     menu.remove();
   };
   document.body.appendChild(menu);
@@ -258,129 +193,81 @@ function onContextMenu(e){
   document.addEventListener("click",function rm(){menu.remove();document.removeEventListener("click",rm);},{once:true});
 }
 
-function onDblClick(e){
-  var nid=getNodeFromEvent(e);
-  if(!nid||!graph.nodes[nid]) return;
-  // Any node can be drilled into to show its layer
-  layerStack.push(nid);
-  currentRoot=nid;
-  layoutGraph();
-  render();
-  updateLayerLabel();
-}
-
 function findSnapNode(mx,my){
-  var p=toSVG(mx,my);
-  var best=null, bestDist=60;
+  var p=toSVG(mx,my); if(!p) return null;
+  var best=null,bestDist=60;
   Object.keys(nodePositions).forEach(function(nid){
     var np=nodePositions[nid];
-    var cx=np.x+NODE_W/2, cy=np.y+NODE_H/2;
-    var dx=p.x-cx, dy=p.y-cy, dist=Math.sqrt(dx*dx+dy*dy);
+    var dx=p.x-(np.x+NODE_W/2),dy=p.y-(np.y+NODE_H/2);
+    var dist=Math.sqrt(dx*dx+dy*dy);
     if(dist<bestDist){bestDist=dist;best=nid;}
   });
   return best;
 }
 
-function childrenOf(nid){
-  var kids=[];
-  (graph.edges||[]).forEach(function(e){if(e.src===nid&&e.type==="decomposition") kids.push(e.dst);});
-  return kids;
-}
-
-function parentOf(nid){
-  var p=null;
-  (graph.edges||[]).forEach(function(e){if(e.dst===nid&&e.type==="decomposition") p=e.src;});
-  return p;
-}
-
-function depsOf(nid){
-  var deps=[];
+// --- Edge helpers ---
+function neighborsOf(nid){
+  var nb={};
   (graph.edges||[]).forEach(function(e){
-    if(e.dst===nid&&e.type==="dependency") deps.push(e.src);
-    if(e.src===nid&&e.type==="dependency") deps.push(e.dst);
+    if(e.src===nid) nb[e.dst]=true;
+    if(e.dst===nid) nb[e.src]=true;
   });
-  return deps;
+  return Object.keys(nb);
 }
 
+function addEdge(fromId,toId){
+  var exists=(graph.edges||[]).some(function(e){return e.src===fromId&&e.dst===toId;});
+  if(exists) return;
+  graph.edges.push({src:fromId,dst:toId});
+  fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:fromId,dst:toId,type:"dependency"})});
+  layoutGraph(); render();
+}
+
+// --- Render ---
 function render(){
-  // Active layer: ONLY currentRoot + its direct decomposition children
-  var activeIds={};
-  if(currentRoot){
-    activeIds[currentRoot]=true;
-    childrenOf(currentRoot).forEach(function(c){activeIds[c]=true;});
+  var highlight={};
+  if(selectedNode){
+    highlight[selectedNode]=true;
+    neighborsOf(selectedNode).forEach(function(n){highlight[n]=true;});
   }
+  var anySelected=selectedNode!=null;
 
-  // Build SVG
   var html='';
-
-  // Edges
-  var drawnEdges={};
+  var drawn={};
   (graph.edges||[]).forEach(function(e){
-    var key=e.src+"-"+e.dst+"-"+e.type;
-    if(drawnEdges[key]) return; drawnEdges[key]=true;
-    var from=nodePositions[e.src], to=nodePositions[e.dst];
+    var key=e.src+"-"+e.dst; if(drawn[key]) return; drawn[key]=true;
+    var from=nodePositions[e.src],to=nodePositions[e.dst];
     if(!from||!to) return;
-    var isDep=e.type==="dependency";
-    var bothActive=activeIds[e.src]&&activeIds[e.dst];
-    // Dependency edges always visible (cross-branch context)
-    var isDep=e.type==="dependency";
-    var strokeCol=bothActive?(isDep?COLORS.edgeDep:COLORS.edgeDecomp):(isDep?COLORS.edgeDep:"#d1d5db");
-    var edgeOpacity=(bothActive||isDep)?1:0.12;
-    var sw=isDep?1.5:2;
-    var dash=isDep?"6 3":"none";
-
-    // Outgoing edges start from TOP of source, incoming plug into BOTTOM of target
-    // Nodes lower in layout are dependencies; their edges flow upward
-    var x1, y1, x2, y2;
-    if(!isDep){
-      x1=to.x+NODE_W/2; y1=to.y;           // child top-center (outgoing upward)
-      x2=from.x+NODE_W/2; y2=from.y+NODE_H; // parent bottom-center (incoming)
-    }else{
-      x1=from.x+NODE_W/2; y1=from.y;        // src top-center (outgoing)
-      x2=to.x+NODE_W/2; y2=to.y+NODE_H;     // dst bottom-center (incoming)
-    }
-
-    // Cubic bezier with control points offset vertically
-    var dy=Math.max(Math.abs(y2-y1)/3, 20);
-    var d="M"+x1+" "+y1+" C"+x1+" "+(y1+dy)+" "+x2+" "+(y2-dy)+" "+x2+" "+y2;
-    html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="'+sw+'" stroke-dasharray="'+dash+'" opacity="'+edgeOpacity+'"/>';
-
-    // Arrowhead at midpoint (t=0.5 of cubic bezier)
-    if(bothActive){
-      var t=0.5, mt=1-t;
-      var mx=mt*mt*mt*x1 + 3*mt*mt*t*x1 + 3*mt*t*t*x2 + t*t*t*x2;
-      var my=mt*mt*mt*y1 + 3*mt*mt*t*(y1+dy) + 3*mt*t*t*(y2-dy) + t*t*t*y2;
-      var ang=Math.atan2(y2-y1,x2-x1);
-      var s=5;
-      var points=(mx-s*Math.cos(ang-0.5))+","+(my-s*Math.sin(ang-0.5))+" "+(mx-s*Math.cos(ang+0.5))+","+(my-s*Math.sin(ang+0.5))+" "+mx+","+my;
-      html+='<polygon points="'+points+'" fill="'+strokeCol+'"/>';
+    var active=anySelected?(highlight[e.src]&&highlight[e.dst]):true;
+    var strokeCol=active?COLORS.edge:"#d1d5db";
+    var opacity=active?1:0.15;
+    var x1=from.x+NODE_W/2,y1=from.y+NODE_H; // source bottom (exit)
+    var x2=to.x+NODE_W/2,y2=to.y;             // target top (enter)
+    var dy=Math.max(Math.abs(y2-y1)/3,20);
+    var d="M"+x1+" "+y1+" C"+x1+" "+(y1-dy)+" "+x2+" "+(y2+dy)+" "+x2+" "+y2;
+    html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="2" opacity="'+opacity+'"/>';
+    if(active){
+      var ang=Math.atan2(y2-y1,x2-x1),s=8;
+      var mx=(x1+x2)/2,my=(y1+y2)/2;
+      var pts=(mx-s*Math.cos(ang-0.5))+","+(my-s*Math.sin(ang-0.5))+" "+(mx-s*Math.cos(ang+0.5))+","+(my-s*Math.sin(ang+0.5))+" "+mx+","+my;
+      html+='<polygon points="'+pts+'" fill="'+strokeCol+'"/>';
     }
   });
 
-  // Nodes -- show ALL, dim inactive ones
-  var allIds=Object.keys(graph.nodes);
-  allIds.forEach(function(nid){
-    var n=graph.nodes[nid], pos=nodePositions[nid];
+  Object.keys(graph.nodes).forEach(function(nid){
+    var n=graph.nodes[nid],pos=nodePositions[nid];
     if(!n||!pos) return;
-    var inLayer=activeIds[nid];
-    var col=inLayer?sevColor(n.severity):"#9ca3af";
-    var opacity=inLayer?1:0.4;
-    var ptrEvents="auto"; // always clickable for double-click navigation
-    html+='<g data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')" opacity="'+opacity+'" style="pointer-events:'+ptrEvents+';cursor:pointer;">';
-    if(inLayer){
-      // Card shadow
-      html+='<rect x="2" y="3" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="#00000010"/>';
-    }
-    // Card body
-    html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="'+COLORS.cardBg+'" stroke="'+(nid===selectedNode?col:inLayer?COLORS.cardStroke:"#e5e7eb")+'" stroke-width="'+(nid===selectedNode?2:1)+'"/>';
-    // Left accent bar
+    var inHighlight=!anySelected||highlight[nid];
+    var col=inHighlight?sevColor(n.severity):"#9ca3af";
+    var opacity=inHighlight?1:0.3;
+    html+='<g data-node="'+nid+'" transform="translate('+pos.x+','+pos.y+')" opacity="'+opacity+'" style="cursor:pointer;">';
+    if(inHighlight) html+='<rect x="2" y="3" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="#00000010"/>';
+    html+='<rect class="node-rect" x="0" y="0" width="'+NODE_W+'" height="'+NODE_H+'" rx="8" fill="'+COLORS.cardBg+'" stroke="'+(nid===selectedNode?col:inHighlight?COLORS.cardStroke:"#e5e7eb")+'" stroke-width="'+(nid===selectedNode?2:1)+'"/>';
     html+='<rect x="0" y="6" width="3" height="'+(NODE_H-12)+'" rx="1.5" fill="'+col+'"/>';
-    // Title (truncated with ellipsis for the narrower card)
     var title=(n.title||nid);
-    var maxChars=Math.floor((NODE_W-50)/7); // ~14 chars for 150px card
+    var maxChars=Math.floor((NODE_W-50)/7);
     if(title.length>maxChars) title=title.slice(0,maxChars-2)+"…";
-    html+='<text x="28" y="21" fill="'+(inLayer?COLORS.text:"#9ca3af")+'" font-size="12" font-family="system-ui" font-weight="600" style="user-select:none;pointer-events:none;">'+esc(title)+'</text>';
-    // Kind badge + severity on same line
+    html+='<text x="28" y="21" fill="'+(inHighlight?COLORS.text:"#9ca3af")+'" font-size="12" font-family="system-ui" font-weight="600" style="user-select:none;pointer-events:none;">'+esc(title)+'</text>';
     var badge=(n.kind||"task");
     if(n.severity){
       html+='<text x="28" y="38" fill="'+COLORS.textDim+'" font-size="10" font-family="system-ui" style="user-select:none;pointer-events:none;">'+badge+'</text>';
@@ -388,8 +275,7 @@ function render(){
     }else{
       html+='<text x="28" y="38" fill="'+COLORS.textDim+'" font-size="10" font-family="system-ui" style="user-select:none;pointer-events:none;">'+badge+'</text>';
     }
-    // Ports only for active layer
-    if(inLayer){
+    if(inHighlight){
       html+='<circle class="node-port" data-node="'+nid+'" cx="'+NODE_W+'" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="'+col+'" stroke="'+col+'" stroke-width="1.5"/>';
       html+='<circle cx="0" cy="'+NODE_H/2+'" r="'+PORT_R+'" fill="none" stroke="'+COLORS.cardStroke+'" stroke-width="1"/>';
     }
@@ -397,12 +283,13 @@ function render(){
   });
 
   svgEl.innerHTML=html;
-  updateLayerLabel();
 }
 
-function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
-// --- Node creation in sidebar ---
+// --- Node creation ---
+function addNode(kind){ startCreate(kind); }
+
 function startCreate(kind){
   creatingKind=kind;
   document.getElementById("panel-title").textContent="New "+(kind==="leaf"?"Data Source":"Task");
@@ -411,15 +298,15 @@ function startCreate(kind){
   document.getElementById("panel-kind").value=kind;
   document.getElementById("panel-threshold").value=25;
   document.getElementById("panel-threshold-val").textContent="25";
-  document.getElementById("panel-adapter").value="";
-  document.getElementById("panel-query").value="";
+  document.getElementById("btn-inject").disabled=true;
+  document.getElementById("btn-delete").style.display="none";
   document.getElementById("panel-relations").style.display="none";
   onKindChange();
 }
 
 function onKindChange(){
-  var k=document.getElementById("panel-kind").value;
-  document.getElementById("panel-leaf-fields").style.display=k==="leaf"?"block":"none";
+  document.getElementById("panel-leaf-fields").style.display=
+    document.getElementById("panel-kind").value==="leaf"?"block":"none";
 }
 
 async function hashId(name){
@@ -435,26 +322,21 @@ async function saveNodePanel(){
   var desc=document.getElementById("panel-desc").value;
   var thr=parseFloat(document.getElementById("panel-threshold").value);
   var nid=creatingKind?await hashId(name):selectedNode;
-
   var body={id:nid,kind:kind,title:name,description:desc,trigger_threshold:thr};
   if(kind==="leaf"){
     body.adapter_id=document.getElementById("panel-adapter").value||"generic";
     body.query=document.getElementById("panel-query").value||"";
   }
-
-  // Create node as orphan first, user wires it manually
   fetch("/builder/nodes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
-    if(d.deduped){nid=d.id;}
-    body.id=nid;
-    graph.nodes[nid]=body;
+    if(d.deduped) nid=d.id;
+    body.id=nid; graph.nodes[nid]=body;
     if(creatingKind){
-      selectedNode=nid;
+      selectedNode=nid; creatingKind=null;
       document.getElementById("panel-title").textContent=name+" ("+kind+")";
       document.getElementById("panel-relations").style.display="block";
-      creatingKind=null;
+      document.getElementById("btn-delete").style.display="block";
     }
-    layoutGraph();
-    render();
+    layoutGraph(); render();
   });
 }
 
@@ -471,12 +353,10 @@ function selectNode(nid){
   document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
   document.getElementById("panel-relations").style.display="block";
   document.getElementById("btn-delete").style.display="block";
-  // Enable inject button if node has threshold_rules (flattened from API)
   var hasRules=n.threshold_rules&&n.threshold_rules.length>0;
   document.getElementById("btn-inject").disabled=!hasRules;
   onKindChange();
   fetch("/builder/nodes/"+nid).then(function(r){return r.json();}).then(function(d){
-    // Update local node from server
     n.description=d.description||n.description||"";
     n.threshold_rules=d.threshold_rules||[];
     n.raw_value=d.raw_value;
@@ -486,124 +366,77 @@ function selectNode(nid){
     document.getElementById("panel-threshold-val").textContent=n.trigger_threshold||25;
     hasRules=n.threshold_rules&&n.threshold_rules.length>0;
     document.getElementById("btn-inject").disabled=!hasRules;
-
-    var iDepend=[];
-    (d.children||[]).forEach(function(c){iDepend.push({id:c,type:"decomp"});});
-    (d.dependents||[]).forEach(function(c){iDepend.push({id:c,type:"dep"});});
-    var depOnMe=[];
-    (d.parents||[]).forEach(function(p){depOnMe.push({id:p,type:"decomp"});});
-    (d.dependencies||[]).forEach(function(p){depOnMe.push({id:p,type:"dep"});});
-
-    var labelFor=function(r){return r.type==="dep"?"[dep] ":"";};
+    var seenI={}, seenD={};
+    var iDepend=[], depOnMe=[];
+    (d.children||[]).forEach(function(c){if(!seenI[c]){seenI[c]=true;iDepend.push({id:c});}});
+    (d.dependents||[]).forEach(function(c){if(!seenI[c]){seenI[c]=true;iDepend.push({id:c});}});
+    (d.parents||[]).forEach(function(p){if(!seenD[p]){seenD[p]=true;depOnMe.push({id:p});}});
+    (d.dependencies||[]).forEach(function(p){if(!seenD[p]){seenD[p]=true;depOnMe.push({id:p});}});
     var titleFor=function(nid){return (graph.nodes[nid]&&graph.nodes[nid].title)||nid;};
     document.getElementById("panel-dependencies").innerHTML=iDepend.map(function(r){
-      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+esc(titleFor(r.id))+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+esc(titleFor(r.id))+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
     document.getElementById("panel-dependents").innerHTML=depOnMe.map(function(r){
-      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+labelFor(r)+esc(titleFor(r.id))+"</div>";
+      return "<div class='rel-item' style='cursor:pointer;' onclick='drillToNode(\""+r.id+"\")'>"+esc(titleFor(r.id))+"</div>";
     }).join("")||"<span style='opacity:0.4;'>none</span>";
   }).catch(function(){});
+  render();
 }
 
 function drillToNode(nid){
-  layerStack.push(nid);
-  currentRoot=nid;
   selectNode(nid);
-  layoutGraph();
-  render();
-  updateLayerLabel();
 }
 
-function closePanel(){ creatingKind=null; selectedNode=null; document.getElementById("panel-title").textContent="New Node"; document.getElementById("panel-relations").style.display="none"; document.getElementById("btn-delete").style.display="none"; render(); }
+function closePanel(){
+  creatingKind=null; selectedNode=null;
+  document.getElementById("panel-title").textContent="New Node";
+  document.getElementById("panel-relations").style.display="none";
+  document.getElementById("btn-delete").style.display="none";
+  document.getElementById("btn-inject").disabled=true;
+  render();
+}
 
 function deleteSelectedNode(){
-  var nid=selectedNode;
-  if(!nid) return;
-  if(!confirm("Delete node "+nid+"?")) return;
-  fetch("/builder/nodes/"+nid,{method:"DELETE"}).then(function(){
-    delete graph.nodes[nid]; delete nodePositions[nid];
-    graph.edges=graph.edges.filter(function(e){return e.src!==nid&&e.dst!==nid;});
-    if(currentRoot===nid){ goUpLayer(); }
-    closePanel(); render();
+  if(!selectedNode) return;
+  if(!confirm("Delete node "+selectedNode+"?")) return;
+  fetch("/builder/nodes/"+selectedNode,{method:"DELETE"}).then(function(){
+    delete graph.nodes[selectedNode]; delete nodePositions[selectedNode];
+    graph.edges=graph.edges.filter(function(e){return e.src!==selectedNode&&e.dst!==selectedNode;});
+    closePanel(); layoutGraph(); render();
   });
 }
 
-function addDecompEdge(parentId,childId){
-  var exists=(graph.edges||[]).some(function(e){return e.src===parentId&&e.dst===childId&&e.type==="decomposition";});
-  if(exists) return;
-  graph.edges.push({src:parentId,dst:childId,type:"decomposition"});
-  fetch("/builder/edges",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:parentId,dst:childId,type:"decomposition"})});
-  layoutGraph();
-  render();
-}
-
-function goUpLayer(){
-  if(layerStack.length<=1) return;
-  layerStack.pop();
-  currentRoot=layerStack[layerStack.length-1];
-  render();
-}
-
-function updateLayerLabel(){
-  document.getElementById("layer-label").textContent="Layer: "+(layerStack.length-1)+" | "+currentRoot;
-  document.getElementById("btn-up").disabled=layerStack.length<=1;
-}
-
-function deleteContextNode(){
-  var nid=selectedNode;
-  if(!nid) return;
-  fetch("/builder/nodes/"+nid,{method:"DELETE"}).then(function(){
-    delete graph.nodes[nid]; delete nodePositions[nid];
-    graph.edges=graph.edges.filter(function(e){return e.src!==nid&&e.dst!==nid;});
-    if(currentRoot===nid){ goUpLayer(); }
-    closePanel(); render();
-  });
-}
-
-function addNode(kind){ startCreate(kind); }
-
+// --- Actions ---
 async function runBatchAssess(){
-  // Check for orphan nodes (no edges at all)
   var orphans=[];
   Object.keys(graph.nodes).forEach(function(nid){
     var hasEdge=(graph.edges||[]).some(function(e){return e.src===nid||e.dst===nid;});
     if(!hasEdge) orphans.push(nid);
   });
   if(orphans.length>0){
-    alert("Cannot run assessment. Orphan nodes (no edges):\n"+orphans.join(", "));
-    return;
+    alert("Cannot run assessment. Orphan nodes:\n"+orphans.join(", ")); return;
   }
   var r=await fetch("/builder/batch-assess",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"full"})});
   var result=await r.json();
   var assessments=result.assessments||result;
   var violations=result.violations||[];
-  if(violations.length>0){
-    console.log("Rule violations:",violations);
-  }
+  if(violations.length>0) console.log("Violations:",violations);
   assessments.forEach(function(a){if(graph.nodes[a.node_id]){graph.nodes[a.node_id].severity=a.severity;}});
-  layoutGraph();
-  render();
+  layoutGraph(); render();
 }
 
 async function injectProblem(nodeId){
   if(!nodeId) return;
-  var node=graph.nodes[nodeId];
-  if(!node||!node.threshold_rules||!node.threshold_rules.length){
-    alert("No threshold rules defined for this data source.");
-    return;
-  }
-  var rule=node.threshold_rules[0];
-  var currentVal=node.raw_value!=null?node.raw_value:rule.value;
-  var badVal=parseFloat(prompt(
-    "Inject problem for "+node.title+"\nRule: "+rule.field+" "+rule.operator+" "+rule.value+
-    "\nCurrent value: "+currentVal+"\nEnter value that violates the threshold:",
-    rule.operator==="<"?Math.max(0,rule.value-20):rule.value+20
-  ));
-  if(isNaN(badVal)) return;
-  var r=await fetch("/builder/inject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({node_id:nodeId,raw_value:badVal})});
+  var n=graph.nodes[nodeId];
+  if(!n||!n.threshold_rules||!n.threshold_rules.length){alert("No threshold rules.");return;}
+  var rule=n.threshold_rules[0];
+  var cur=n.raw_value!=null?n.raw_value:rule.value;
+  var bad=parseFloat(prompt("Inject problem for "+n.title+"\nRule: "+rule.field+" "+rule.operator+" "+rule.value+"\nCurrent: "+cur,rule.operator==="<"?Math.max(0,rule.value-20):rule.value+20));
+  if(isNaN(bad)) return;
+  var r=await fetch("/builder/inject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({node_id:nodeId,raw_value:bad})});
   var d=await r.json();
-  node.raw_value=d.raw_value;
-  alert("Injected. "+node.title+" raw_value = "+d.raw_value+"\n(Threshold: "+rule.field+" "+rule.operator+" "+rule.value+")");
+  n.raw_value=d.raw_value;
+  alert("Injected. "+n.title+" raw_value = "+d.raw_value);
 }
 
-function resetView(){ viewX=0;viewY=0;viewScale=1; currentRoot=null; layerStack=[]; selectedNode=null; loadGraph(); }
+function resetView(){ nodePositions={}; selectedNode=null; closePanel(); loadGraph(); }

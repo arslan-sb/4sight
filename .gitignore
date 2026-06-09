@@ -8,10 +8,5 @@ venv/
 # Chroma and local data
 .chroma/
 *.sqlite3
-.idea
-.idea/
-2026-06-05-4sight-poc-design.md
-2026-06-05-4sight-poc.md
-CLAUDE.md
-prompt.md
-.env.example
+.DS_Store
+docs/.DS_Store
