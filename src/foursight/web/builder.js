@@ -73,11 +73,11 @@ function layoutGraph(){
   var allNids=Object.keys(graph.nodes);
   if(allNids.length===0) return;
 
-  // Assign layers via BFS (topological order)
+  // Assign layers via reverse BFS: sinks (root) at top, sources (leaves) at bottom
   var layers={};
   allNids.forEach(function(nid){
-    var hasIncoming=(graph.edges||[]).some(function(e){return e.dst===nid;});
-    if(!hasIncoming) layers[nid]=0;
+    var hasOutgoing=(graph.edges||[]).some(function(e){return e.src===nid;});
+    if(!hasOutgoing) layers[nid]=0; // sinks = layer 0 (top)
   });
   if(Object.keys(layers).length===0) layers[allNids[0]]=0;
 
@@ -87,9 +87,10 @@ function layoutGraph(){
       if(layers[nid]!==undefined) return;
       var maxSrc=-1, allDone=true;
       (graph.edges||[]).forEach(function(e){
-        if(e.dst===nid){
-          if(layers[e.src]===undefined) allDone=false;
-          else maxSrc=Math.max(maxSrc,layers[e.src]);
+        if(e.src===nid && layers[e.dst]!==undefined){
+          maxSrc=Math.max(maxSrc,layers[e.dst]);
+        }else if(e.src===nid && layers[e.dst]===undefined){
+          allDone=false;
         }
       });
       if(allDone&&maxSrc>=0){layers[nid]=maxSrc+1;changed=true;}
@@ -240,13 +241,13 @@ function render(){
     var active=anySelected?(highlight[e.src]&&highlight[e.dst]):true;
     var strokeCol=active?COLORS.edge:"#d1d5db";
     var opacity=active?1:0.15;
-    var x1=to.x+NODE_W/2,y1=to.y; // target top-center
-    var x2=from.x+NODE_W/2,y2=from.y+NODE_H; // source bottom-center
+    var x1=from.x+NODE_W/2,y1=from.y; // source top-center (exit, lower node)
+    var x2=to.x+NODE_W/2,y2=to.y+NODE_H; // target bottom-center (enter, upper node)
     var dy=Math.max(Math.abs(y2-y1)/3,20);
     var d="M"+x1+" "+y1+" C"+x1+" "+(y1-dy)+" "+x2+" "+(y2+dy)+" "+x2+" "+y2;
     html+='<path d="'+d+'" fill="none" stroke="'+strokeCol+'" stroke-width="2" opacity="'+opacity+'"/>';
     if(active){
-      var ang=Math.atan2(y2-y1,x2-x1),s=5;
+      var ang=Math.atan2(y1-y2,x1-x2),s=5;
       var mx=(x1+x2)/2,my=(y1+y2)/2;
       var pts=(mx-s*Math.cos(ang-0.5))+","+(my-s*Math.sin(ang-0.5))+" "+(mx-s*Math.cos(ang+0.5))+","+(my-s*Math.sin(ang+0.5))+" "+mx+","+my;
       html+='<polygon points="'+pts+'" fill="'+strokeCol+'"/>';
