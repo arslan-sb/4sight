@@ -12,3 +12,6 @@ venv/
 .idea/
 2026-06-05-4sight-poc-design.md
 2026-06-05-4sight-poc.md
+CLAUDE.md
+prompt.md
+.env.example

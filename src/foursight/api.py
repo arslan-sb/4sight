@@ -19,6 +19,8 @@ def build_app(seed_fn=None, get_report_fn=None, trace_fn=None) -> FastAPI:
 
     store, eng, _ = seed_fn()
     app = FastAPI(title="4sight")
+    app.state.engine = eng
+    app.state.store = store
     app.state.sockets = []
     if WEB.exists():
         app.mount("/static", StaticFiles(directory=str(WEB)), name="static")
