@@ -10,3 +10,5 @@ venv/
 *.sqlite3
 .DS_Store
 docs/.DS_Store
+CLAUDE.md
+prompt.md

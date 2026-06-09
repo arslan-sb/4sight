@@ -13,7 +13,7 @@ from foursight.integrations.jira_notifier import (
     make_jira_notifier,
     sync_or_create,
 )
-from foursight.models import ChangeEvent, Sensitivity
+from foursight.models import ChangeEvent, DriverBullet, Report, Sensitivity, Severity
 from foursight.seed import build_seed
 
 
@@ -145,6 +145,61 @@ def test_restart_dedup():
 
     assert result.get("deduped")
     assert len(fake._issues) == 1  # no new issue created
+
+
+# ---------------------------------------------------------------------------
+# 5b. Crawl notifier opens exactly one ticket — for the master (root) node
+# ---------------------------------------------------------------------------
+
+def test_only_root_node_gets_ticket():
+    s, eng, fake, ledger, config = _seed_with_notifier()
+    _fire(eng, 90)
+
+    # Exactly one issue total, and it belongs to the crawl root.
+    assert len(fake._issues) == 1
+    assert len(fake.issues_for_node("root")) == 1
+    # A non-root node that also crossed threshold gets no ticket of its own.
+    assert fake.issues_for_node("platform_team") == []
+
+
+def test_resync_same_state_adds_no_comment():
+    s, eng, fake, ledger, config = _seed_with_notifier()
+    _fire(eng, 90)
+    _fire(eng, 90)
+
+    root_issues = fake.issues_for_node("root")
+    assert len(fake._issues) == 1
+    assert len(root_issues) == 1
+    # Identical re-fire → signature unchanged → no refresh comment.
+    assert fake.comments_for_issue(root_issues[0]["key"]) == []
+
+
+def test_existing_ticket_receives_update_comment():
+    s, eng, _ = build_seed()
+    node = s.get_node("root")
+    fake = FakeJiraClient()
+    ledger = TicketLedger()
+    config = _config(threshold="high")
+
+    def _report(line: str) -> Report:
+        return Report(
+            node_id="root",
+            version=1,
+            generated_at=datetime.now(timezone.utc),
+            severity=Severity.HIGH,
+            overall="overall",
+            drivers=[DriverBullet(node_id="root", severity=Severity.HIGH, line=line)],
+        )
+
+    first = sync_or_create(node, _report("driver A"), s, fake, ledger, config)
+    assert first.get("created")
+
+    # Same severity, different driver line → signature changes → update comment.
+    second = sync_or_create(node, _report("driver B"), s, fake, ledger, config)
+    assert second.get("updated") is True
+    assert second.get("deduped") is True
+    assert len(fake._issues) == 1
+    assert len(fake.comments_for_issue(first["issue_key"])) == 1
 
 
 # ---------------------------------------------------------------------------

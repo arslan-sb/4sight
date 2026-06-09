@@ -3,7 +3,7 @@
 **Stream:** Integrations (Jira)
 **Date:** 2026-06-09
 **Author:** Arslan Shaukat
-**Status:** Complete — 99/99 tests passing
+**Status:** Complete — 102/102 tests passing
 
 ---
 
@@ -27,7 +27,9 @@
 
 ## 1. What was built
 
-When a node's risk severity crosses a configurable threshold, 4sight automatically opens a Jira issue. If the risk worsens further, it escalates by commenting on the existing issue rather than creating a new one. It never creates duplicate tickets for the same ongoing risk, even across process restarts. An HTTP API allows the frontend to check status, list tickets, force a sync, or scan all nodes on demand.
+When a crawl pushes the **master node** (the top of the crawl's influence closure) to a severity at or above a configurable threshold, 4sight automatically opens a single Jira issue for that crawl. Only the master node gets a ticket — the intermediate nodes a crawl touches do not each spawn their own. If a later crawl changes the risk picture, the existing ticket is refreshed with a comment rather than a new ticket: an **escalation** comment when severity rises, or a **status update** comment when the drivers change at the same severity. An identical re-fire (same severity and same top drivers) makes no network call at all. It never creates duplicate tickets for the same ongoing risk, even across process restarts. An HTTP API allows the frontend to check status, list tickets, force a sync, or scan all nodes on demand.
+
+> **Master-node resolution.** On a full crawl `changed` is topo-ordered leaves-first, so `changed[-1]` is the master node. But an *identical* re-fire short-circuits — propagation deltas stay below `EPSILON`, never reaching the top — and `changed` collapses to just the trigger node. To keep dedup stable, `make_jira_notifier` resolves the master the same way the engine does: `store.topo_order(store.closure(changed))[-1]`. This equals `changed[-1]` on a full crawl and maps re-fires back to the same master node, so the existing ticket is found instead of a new one being opened for the trigger.
 
 Scope is Jira only. The module is self-contained under `src/foursight/integrations/` so Slack or other channels can be added later as sibling modules without touching this code.
 
@@ -42,7 +44,7 @@ src/foursight/integrations/jira_notifier.py TicketLedger, sync_or_create, make_j
 src/foursight/integrations/jira_router.py   FastAPI APIRouter (6 endpoints)
 src/foursight/integrations/jira.py          JiraConfig.from_env(), attach_jira() facade
 src/foursight/demo_jira.py                  uvicorn entrypoint
-tests/test_jira_integration.py              12 tests — zero real network calls
+tests/test_jira_integration.py              15 tests — zero real network calls
 ```
 
 ---
@@ -77,20 +79,27 @@ Engine.listeners
       │
       └─► make_jira_notifier(store, client, ledger, config)
                 │
-                │  called with list[node_id] after every crawl
+                │  called with list[node_id] (changed) after every crawl
+                │  resolves master = topo_order(closure(changed))[-1]
+                │  and syncs ONLY that node
                 │
                 └─► sync_or_create(node, report, store, client, ledger, config)
                           │
-                          ├─ below threshold?             → {skipped: "below_threshold"}
-                          ├─ in ledger, same severity?    → {deduped: true, issue_key: ...}
-                          ├─ in ledger, higher severity?  → add_comment + {deduped: true, escalated: true}
-                          ├─ not in ledger, open in Jira? → record in ledger + {deduped: true}
-                          └─ new                          → create_issue + {created: true, issue_key: ...}
+                          ├─ below threshold?              → {skipped: "below_threshold"}
+                          ├─ in ledger, higher severity?   → add_comment(escalation) + {deduped: true, escalated: true}
+                          ├─ in ledger, signature changed? → add_comment(update)    + {deduped: true, updated: true}
+                          ├─ in ledger, signature same?    → {deduped: true, issue_key: ...}  (no network call)
+                          ├─ not in ledger, open in Jira?  → record + add_comment(update) + {deduped: true, updated: true}
+                          └─ new                           → create_issue + {created: true, issue_key: ...}
 ```
 
 ### Key design decisions
 
-**Two-layer dedup.** The `TicketLedger` (in-memory dict) is the fast path — no network call needed for repeat events. On process restart the ledger is empty, so `find_open_issue_for_node` queries Jira by label as a durable backstop. Restarts never create duplicates.
+**One ticket per crawl, master node only.** The crawl notifier syncs only the master node, not every changed node. A data-source change can ripple through dozens of nodes; opening a ticket for each would bury the operator. The master node's ticket already traces back to the originating change and carries the top drivers, so it is the single actionable record for that crawl. (The on-demand `/jira/scan` endpoint is separate — it deliberately syncs every node above threshold.)
+
+**Content signature guards re-fire noise.** Each ledger entry stores a `signature` — `f"{severity}|{driver_line_0}|{driver_line_1}|{driver_line_2}"`, stable across timestamps. On re-fire the notifier compares the new signature against the stored one: identical → no comment and no network call; changed (different drivers at the same severity) → one "status update" comment; higher severity → one "escalation" comment. This keeps a refreshed ticket informative without spamming it on every identical crawl.
+
+**Two-layer dedup.** The `TicketLedger` (in-memory dict) is the fast path — no network call needed for repeat events. On process restart the ledger is empty, so `find_open_issue_for_node` queries Jira by label as a durable backstop, records the issue, and posts one status-update comment so the rediscovered ticket reflects the current picture. Restarts never create duplicates.
 
 **Errors never reach the engine.** Every Jira and network call is wrapped in try/except. An outage logs the error and returns `{"error": "..."}` to the caller; risk propagation is never interrupted. This matches the `_broadcast` pattern already used in `api.py`.
 
@@ -155,6 +164,7 @@ Returns all tickets currently tracked in the in-process ledger.
     "issue_key": "OPS-42",
     "url": "https://your-domain.atlassian.net/browse/OPS-42",
     "severity": "critical",
+    "signature": "critical|Alice (payroll ownership): effect 90 [critical]|...",
     "created_at": "2026-06-09T10:23:41.123456+00:00"
   }
 ]
@@ -173,6 +183,7 @@ Returns the ledger entry for one node, or `null` if it has never been synced.
   "issue_key": "OPS-42",
   "url": "https://your-domain.atlassian.net/browse/OPS-42",
   "severity": "critical",
+  "signature": "critical|Alice (payroll ownership): effect 90 [critical]|...",
   "created_at": "2026-06-09T10:23:41.123456+00:00"
 }
 ```
@@ -192,6 +203,7 @@ Forces an immediate sync for a single node. Idempotent — safe to call repeated
 | New ticket created | `{"created": true, "issue_key": "OPS-42", "url": "..."}` |
 | Existing ticket, no change | `{"deduped": true, "issue_key": "OPS-42", "url": "..."}` |
 | Escalated (severity increased) | `{"deduped": true, "escalated": true, "issue_key": "OPS-42", "url": "..."}` |
+| Updated (drivers changed, same severity) | `{"deduped": true, "updated": true, "issue_key": "OPS-42", "url": "..."}` |
 | Below threshold | `{"skipped": "below_threshold"}` |
 | Node has no report yet | `{"skipped": "no_report"}` |
 | Integration disabled | `{"disabled": true}` |
@@ -305,21 +317,27 @@ Atlassian Document Format (v3 ADF) is intentionally avoided to keep the descript
 
 ## 8. Dedup algorithm
 
-`sync_or_create(node, report, store, client, ledger, config)` — called for every node after each crawl.
+`sync_or_create(node, report, store, client, ledger, config)` — called by the crawl notifier for the master node after each crawl (and per-node by `/jira/scan` and `/jira/sync/{node_id}`).
 
 ```
 SEVERITY_RANK = { low: 0, medium: 1, high: 2, critical: 3 }
+signature(report) = f"{report.severity}|{driver_line_0}|{driver_line_1}|{driver_line_2}"
 ```
+
+The **signature** is a stable content fingerprint — severity plus the top three driver lines, with timestamps deliberately excluded so identical risk pictures compare equal across re-fires. Each ledger entry stores it alongside `node_id, issue_key, url, severity, created_at`.
 
 1. **Threshold check.** If `SEVERITY_RANK[report.severity] < SEVERITY_RANK[config.threshold]` → return `{skipped: "below_threshold"}`. No network call.
 
-2. **Ledger hit.** If `node_id` is in the `TicketLedger`:
-   - Same or lower severity → return `{deduped: true}`. No network call.
-   - Higher severity → call `add_comment` with the escalation message, update the ledger entry's severity, return `{deduped: true, escalated: true}`. One network call.
+2. **Ledger hit.** If `node_id` is in the `TicketLedger`, compute `new_sig = signature(report)`:
+   - **Higher severity** than recorded → escalation. Post a `Risk escalated to <sev> (was <old>).` comment with the current description, update the entry's severity and signature, return `{deduped: true, escalated: true}`. One network call.
+   - **Same/lower severity but signature changed** → status update. Post a `Risk status update (<sev>).` comment with the current description, update the entry's signature, return `{deduped: true, updated: true}`. One network call.
+   - **Signature unchanged** → return `{deduped: true}`. No network call.
 
-3. **Restart dedup.** Node is not in the ledger (process restart or first run) → call `find_open_issue_for_node` (JQL search on the `4sight-node-<id>` label). If an open issue exists, record it in the ledger and return `{deduped: true}`. No new issue created.
+3. **Restart dedup.** Node is not in the ledger (process restart or first run) → call `find_open_issue_for_node` (JQL search on the `4sight-node-<id>` label). If an open issue exists, record it in the ledger with the current signature, post one status-update comment, and return `{deduped: true, updated: true}`. No new issue created.
 
-4. **Create.** No open issue found → build ticket content, call `create_issue`, record in ledger, return `{created: true, issue_key, url}`.
+4. **Create.** No open issue found → build ticket content, call `create_issue`, record in ledger with the signature, return `{created: true, issue_key, url}`.
+
+Every "ticket already exists" path returns `{deduped: true}` (the `/jira/scan` classifier and the dedup tests rely on it). `escalated: true` is set only when severity rose; `updated: true` only when a refresh comment was posted.
 
 All exceptions are caught. On error the function returns `{error: str(e)}` and logs; it never raises into the engine.
 
@@ -370,9 +388,22 @@ Report: http://localhost:8000/report/root
 
 If Jira returns an error on the `priority` field (some projects use custom priority schemes or restrict the field), the client automatically retries once without it.
 
-**Escalation comment format:**
+**Escalation comment format** (severity rose) — the full current description follows the header line:
 ```
-Risk escalated to critical (was high). Score: Alice (payroll ownership): effect 90 [critical]
+Risk escalated to critical (was high).
+
+Severity: critical
+Score: Alice (payroll ownership): effect 90 [critical]
+...
+```
+
+**Status-update comment format** (drivers changed at the same severity, or a ticket was rediscovered on restart):
+```
+Risk status update (critical).
+
+Severity: critical
+Score: Alice (payroll ownership): effect 90 [critical]
+...
 ```
 
 ---
@@ -460,7 +491,7 @@ attach_jira(app, engine, store, client=DisabledJiraClient(), config=config)
 
 ## 13. Test coverage summary
 
-All 12 tests are in `tests/test_jira_integration.py`. None make real network calls.
+All 15 tests are in `tests/test_jira_integration.py`. None make real network calls.
 
 | Test | What it verifies |
 |---|---|
@@ -469,6 +500,9 @@ All 12 tests are in `tests/test_jira_integration.py`. None make real network cal
 | `test_escalation` | high → critical: 1 comment added on existing issue, no new issue created |
 | `test_below_threshold` | Effect score 15 → low severity; 0 issues created |
 | `test_restart_dedup` | Fresh `TicketLedger` with pre-existing open issue in Jira → deduped, no new issue |
+| `test_only_root_node_gets_ticket` | One crawl opens exactly 1 issue total — for the master node `root`; a non-root above-threshold node (`platform_team`) gets none |
+| `test_resync_same_state_adds_no_comment` | Identical re-fire → still 1 issue and 0 comments (signature unchanged, no network call) |
+| `test_existing_ticket_receives_update_comment` | Same severity, different driver lines → `{updated, deduped}`; exactly 1 refresh comment, no new issue |
 | `test_router_status_enabled` | `GET /jira/status` returns `enabled: true` and `threshold` field |
 | `test_router_sync_creates_then_dedupes` | `POST /jira/sync/root` → `issue_key` present; second call → `deduped: true` |
 | `test_router_tickets_list` | `GET /jira/tickets` lists the synced entry for `root` |
@@ -479,6 +513,6 @@ All 12 tests are in `tests/test_jira_integration.py`. None make real network cal
 
 **Full suite result:**
 ```
-99 passed, 2 warnings in 1.84s
+102 passed, 2 warnings in 2.20s
 ```
-(87 pre-existing tests + 12 new Jira tests, all green)
+(87 pre-existing tests + 15 Jira tests, all green)

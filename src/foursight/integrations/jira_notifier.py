@@ -20,12 +20,13 @@ class TicketLedger:
     def get(self, node_id: str) -> dict[str, Any] | None:
         return self._data.get(node_id)
 
-    def set(self, node_id: str, issue_key: str, url: str, severity: str) -> None:
+    def set(self, node_id: str, issue_key: str, url: str, severity: str, signature: str = "") -> None:
         self._data[node_id] = {
             "node_id": node_id,
             "issue_key": issue_key,
             "url": url,
             "severity": severity,
+            "signature": signature,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -34,6 +35,12 @@ class TicketLedger:
 
     def __contains__(self, node_id: str) -> bool:
         return node_id in self._data
+
+
+def _signature(report: Any) -> str:
+    """Stable content fingerprint (ignores timestamps): severity + top drivers."""
+    drivers = "|".join(d.line for d in report.drivers[:3])
+    return f"{report.severity.value}|{drivers}"
 
 
 def _build_description(node: Any, report: Any, store: Any, public_url: str) -> str:
@@ -73,37 +80,44 @@ def sync_or_create(node: Any, report: Any, store: Any, client: Any, ledger: Tick
         if rank < threshold_rank:
             return {"skipped": "below_threshold"}
 
+        new_sig = _signature(report)
+        description = _build_description(node, report, store, config.public_url)
+
         if node.id in ledger:
             entry = ledger.get(node.id)
             existing_rank = SEVERITY_RANK.get(entry["severity"], 0)
             if rank > existing_rank:
-                # Escalation: comment and update ledger
-                comment = (
-                    f"Risk escalated to {sev} "
-                    f"(was {entry['severity']}). "
-                    f"Score: {report.drivers[0].line if report.drivers else 'n/a'}"
-                )
+                # Escalation: severity rose → comment and update ledger.
+                comment = f"Risk escalated to {sev} (was {entry['severity']}).\n\n{description}"
                 client.add_comment(entry["issue_key"], comment)
-                ledger.set(node.id, entry["issue_key"], entry["url"], sev)
+                ledger.set(node.id, entry["issue_key"], entry["url"], sev, signature=new_sig)
                 return {"deduped": True, "escalated": True, "issue_key": entry["issue_key"], "url": entry["url"]}
+            if new_sig != entry.get("signature", ""):
+                # Same/lower severity but content changed → refresh comment.
+                comment = f"Risk status update ({sev}).\n\n{description}"
+                client.add_comment(entry["issue_key"], comment)
+                ledger.set(node.id, entry["issue_key"], entry["url"], entry["severity"], signature=new_sig)
+                return {"deduped": True, "updated": True, "issue_key": entry["issue_key"], "url": entry["url"]}
+            # Nothing changed → no network call.
             return {"deduped": True, "issue_key": entry["issue_key"], "url": entry["url"]}
 
         # Not in ledger — check Jira for an existing open issue (restart dedup)
         existing = client.find_open_issue_for_node(node.id)
         if existing:
-            ledger.set(node.id, existing["key"], existing["url"], sev)
-            return {"deduped": True, "issue_key": existing["key"], "url": existing["url"]}
+            ledger.set(node.id, existing["key"], existing["url"], sev, signature=new_sig)
+            comment = f"Risk status update ({sev}).\n\n{description}"
+            client.add_comment(existing["key"], comment)
+            return {"deduped": True, "updated": True, "issue_key": existing["key"], "url": existing["url"]}
 
         # Create new ticket
         summary = f"[{sev.upper()}] {node.title} — operational risk"
-        description = _build_description(node, report, store, config.public_url)
         labels = ["4sight", f"4sight-node-{node.id}", f"4sight-sev-{sev}"]
         result = client.create_issue(summary, description, sev, labels, config.public_url)
 
         if result.get("disabled"):
             return {"disabled": True}
 
-        ledger.set(node.id, result["key"], result["url"], sev)
+        ledger.set(node.id, result["key"], result["url"], sev, signature=new_sig)
         return {"created": True, "issue_key": result["key"], "url": result["url"]}
 
     except Exception as exc:
@@ -113,13 +127,26 @@ def sync_or_create(node: Any, report: Any, store: Any, client: Any, ledger: Tick
 
 def make_jira_notifier(store: Any, client: Any, ledger: TicketLedger, config: Any) -> Callable[[list[str]], None]:
     def _listener(changed: list[str]) -> None:
-        for node_id in changed:
-            try:
-                node = store.get_node(node_id)
-                if node.report is None:
-                    continue
-                sync_or_create(node, node.report, store, client, ledger, config)
-            except Exception as exc:
-                logger.exception("Jira notifier error for %s: %s", node_id, exc)
+        try:
+            if not changed:
+                return
+            # One ticket per crawl, for the master (top) node only.
+            #
+            # On a full crawl `changed` is topo-ordered leaves-first, so
+            # `changed[-1]` is the master node. But an *identical* re-fire
+            # short-circuits (deltas stay below EPSILON), so propagation never
+            # reaches the top and `changed` collapses to just the trigger node.
+            # Keying off `changed[-1]` there would open a second ticket for the
+            # trigger instead of refreshing the master's. So we resolve the true
+            # master the same way the engine does — the top of the crawl's
+            # influence closure — which equals `changed[-1]` on a full crawl and
+            # maps re-fires back to the same master so dedup holds.
+            master_id = store.topo_order(store.closure(changed))[-1]
+            node = store.get_node(master_id)
+            if node.report is None:
+                return
+            sync_or_create(node, node.report, store, client, ledger, config)
+        except Exception as exc:
+            logger.exception("Jira notifier error for crawl %s: %s", changed, exc)
 
     return _listener
