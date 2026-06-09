@@ -8,3 +8,5 @@ venv/
 # Chroma and local data
 .chroma/
 *.sqlite3
+.DS_Store
+docs/.DS_Store
