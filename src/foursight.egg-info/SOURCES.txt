@@ -6,6 +6,7 @@ src/foursight/assess.py
 src/foursight/company_fixture.py
 src/foursight/db.py
 src/foursight/demo.py
+src/foursight/demo_jira.py
 src/foursight/demo_supply_chain.py
 src/foursight/fakes.py
 src/foursight/flatten.py
@@ -38,6 +39,11 @@ src/foursight/ingestion/__init__.py
 src/foursight/ingestion/base.py
 src/foursight/ingestion/csv_adapter.py
 src/foursight/ingestion/payroll_redacted.py
+src/foursight/integrations/__init__.py
+src/foursight/integrations/jira.py
+src/foursight/integrations/jira_client.py
+src/foursight/integrations/jira_notifier.py
+src/foursight/integrations/jira_router.py
 tests/test_api.py
 tests/test_assess.py
 tests/test_batch_assess.py
@@ -50,6 +56,7 @@ tests/test_flatten.py
 tests/test_graph_store.py
 tests/test_ingestion.py
 tests/test_integration.py
+tests/test_jira_integration.py
 tests/test_llm.py
 tests/test_load_company.py
 tests/test_mcp_server.py
