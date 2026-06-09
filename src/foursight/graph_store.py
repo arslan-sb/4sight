@@ -25,8 +25,8 @@ class GraphStore:
 
     def _influence_edge(self, edge: Edge) -> tuple[str, str]:
         if edge.type == EdgeType.DECOMPOSITION:
-            return (edge.dst, edge.src)   # child influences parent
-        return (edge.src, edge.dst)       # source influences target
+            return (edge.dst, edge.src)
+        return (edge.src, edge.dst)
 
     def add_edge(self, src: str, dst: str, type: EdgeType) -> None:
         edge = Edge(src=src, dst=dst, type=type)
@@ -37,10 +37,10 @@ class GraphStore:
         self._infl.add_edge(u, v)
 
     def children(self, node_id: str) -> list[str]:
-        return [e.dst for e in self._edges if e.src == node_id and e.type == EdgeType.DECOMPOSITION]
+        return [e.dst for e in self._edges if e.src == node_id]
 
     def parents(self, node_id: str) -> list[str]:
-        return [e.src for e in self._edges if e.dst == node_id and e.type == EdgeType.DECOMPOSITION]
+        return [e.src for e in self._edges if e.dst == node_id]
 
     def dependencies(self, node_id: str) -> list[str]:
         return [e.src for e in self._edges if e.dst == node_id and e.type == EdgeType.DEPENDENCY]

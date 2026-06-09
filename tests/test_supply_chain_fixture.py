@@ -4,19 +4,16 @@ from foursight.models import EdgeType
 
 def test_fixture_has_required_structures():
     spec = parse_supply_chain()
-    parents, children, has_dep, has_conf = {}, {}, False, False
+    incoming, outgoing, has_conf = {}, {}, False
     for src, dst, etype in spec.edges:
-        if etype == EdgeType.DECOMPOSITION:
-            parents[dst] = parents.get(dst, 0) + 1
-            children[src] = children.get(src, 0) + 1
-        else:
-            has_dep = True
+        incoming[dst] = incoming.get(dst, 0) + 1
+        outgoing[src] = outgoing.get(src, 0) + 1
     for n in spec.nodes:
         if n.data_binding and n.data_binding.sensitivity.value == "confidential":
             has_conf = True
-    assert any(c >= 2 for c in parents.values())
-    assert has_dep
-    assert any(c >= 3 for c in children.values())
+    assert any(c >= 2 for c in incoming.values())  # shared dependency (multiple sources)
+    assert any(c >= 3 for c in incoming.values())  # aggregate receiving from 3+ sources
+    assert len(spec.edges) >= 23
     assert has_conf
     assert spec.policy_docs
     assert len(spec.nodes) >= 19

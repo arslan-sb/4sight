@@ -2,6 +2,7 @@ pydantic>=2.6
 networkx>=3.2
 chromadb>=0.5
 openai>=1.30
+anthropic>=0.40
 fastapi>=0.110
 uvicorn>=0.29
 fastmcp>=2.0
